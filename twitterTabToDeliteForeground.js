@@ -3,6 +3,8 @@
 
 const tweetUrlRegex = /https?:\/\/(?:x|twitter)\.com\/(?<user>[a-zA-Z0-9_]+)\/status\/(?<tweetId>\d+)/;
 const tweetTitleRegex = /(\(\d+\)\s)?(?<name>.+)\s.+“(?<content>.+)”/
+// http:// または https:// で始まり、空白文字（スペース、改行など）以外の文字が続く文字列にマッチする正規表現
+const urlRegex = /https?:\/\/[^\s]+/g;
 
 /** by Gemini
  * TweetのURLから投稿時刻のDateオブジェクトを取得する
@@ -60,7 +62,7 @@ const posts = new Map()
 
 const initialActiveTabsFocus = new Map(
 	Object.entries(tabsInfo)
-	.flatMap(([tabId, { active, window }]) => active ? [[tabId, window.focused]] : [])
+		.flatMap(([tabId, { active, window }]) => active ? [[tabId, window.focused]] : [])
 )
 
 console.log("initialActiveTabsFocus", initialActiveTabsFocus)
@@ -94,6 +96,27 @@ for (const [tabId, { title, url, window, active }] of tabsInfo) {
 
 
 		const [{ inner, ...tw }] = await ACtl.runInTab(tabId, () => {
+			const urlRegex = /https?:\/\/[^\s]+/g;
+			const replaceByList = (targetRegex, replacementList) => originalString => {
+				let counter = 0
+				return originalString.replace(targetRegex, () => {
+					const replacement = replacementList[counter]
+					counter++
+					return replacement
+				})
+			}
+
+			const getTweetText = tweetElement => {
+				const content = (() => {
+					const t = tweetElement.querySelector("[data-testid='tweetText']")
+					return !!t ? t.textContent : ""
+				})()
+
+				const links = [...tweetElement.querySelectorAll(`[data-testid='tweetText'] > a`)].map(a => a.getAttribute("href"))
+
+				return replaceByList(urlRegex, links)(content)
+			}
+
 			// const tweet = document.querySelector("[data-testid='tweet']") // 返信元が表示されるとそっちを捉えてしまう
 
 			// EXTERNAL_DEPENDENCY: 拡張機能 Twitter UI Customizer
@@ -103,10 +126,7 @@ for (const [tabId, { title, url, window, active }] of tabsInfo) {
 				.map(d => d.childNodes[0].textContent)
 			const hasInnerTweet = names.length > 1
 
-			const content = (() => {
-				const t = tweet.querySelector("[data-testid='tweetText']")
-				return !!t ? t.textContent : ""
-			})()
+			const content = getTweetText(tweet)
 			const imageSources = [...tweet.querySelectorAll("[data-testid='tweetPhoto'] img")].map(img => img.getAttribute("src"))
 			const cardUrl = [...tweet.querySelectorAll(`[data-testid="card.wrapper"] a`)].map(a => a.getAttribute("href"))
 			const cardTexts = [...tweet.querySelectorAll(`[data-testid="card.layoutSmall.detail"]`)]
@@ -119,9 +139,10 @@ for (const [tabId, { title, url, window, active }] of tabsInfo) {
 			if (hasInnerTweet) {
 				console.log("hasInnerTweet!, names:", names)
 
-				const nameParts = tweet.querySelector(`[role="link"] [data-testid='User-Name']`).childNodes
-				const name = nameParts[0].textContent
-				const id = nameParts[1].childNodes[0].childNodes[0].textContent
+				const namePart = tweet.querySelector(`[role="link"] [data-testid='User-Name']`)
+				const name = namePart.childNodes[0].textContent
+				const id = namePart.childNodes[1].childNodes[0].childNodes[0].textContent
+				const time = namePart.querySelector("time").textContent
 
 				const content = (() => {
 					const t = tweet.querySelector(`[role="link"]:has([data-testid="User-Name"]) [data-testid='tweetText']`)
@@ -140,7 +161,8 @@ for (const [tabId, { title, url, window, active }] of tabsInfo) {
 					name,
 					id,
 					images: imageSources,
-					includesVideo
+					includesVideo,
+					time
 				}
 			}
 
@@ -158,7 +180,8 @@ for (const [tabId, { title, url, window, active }] of tabsInfo) {
 
 		console.log({ tw, inner })
 
-		const dlnProvider = (tw, hasInnerTweet = false) => {
+		// isOuterOrInner?: boolean (true: outer, false: inner)
+		const dlnProvider = (tw, isOuterOrInner = undefined) => {
 			const innerMedia = tw.card.url
 				? `\n\n[${tw.card.texts[1]} ${tw.card.url}] (${tw.card.texts[0]})`
 				: tw.includesVideo
@@ -166,14 +189,18 @@ for (const [tabId, { title, url, window, active }] of tabsInfo) {
 					: ""
 			const media = tw.images.map(src => `+${src}`).join("\n")
 
-			const lines = [tw.content, innerMedia, hasInnerTweet ? `...引用` : ""]
+			const lines = [tw.content, innerMedia, isOuterOrInner ? `...引用` : ""]
 				.map(k => k.trim())
 				.filter(k => k.length > 0)
 				.join("\n")
+			const tweetLinkPart = isOuterOrInner != false
+				? `[${timestamp.full} ${url}]`
+				: tw.time
+
 			const dln =
 				`>>
 ${lines}
--- ${tw.name} {${tw.id ?? userid}} [${timestamp.full} ${url}]
+-- ${tw.name} {${tw.id ?? userid}} ${tweetLinkPart}
 ${media}`;
 
 			return dln
@@ -203,11 +230,11 @@ for (const [url, { knm, dln }] of posts.entries()) {
 	await ACtl.on("tabLoadEnd", tabId);
 
 	await ACtl.runInTab(tabId, () => {
-		document.querySelector("#drw button.sv").click()
-		// document.querySelector("#drw button.pvw").click()
+		// document.querySelector("#drw button.sv").click()
+		document.querySelector("#drw button.pvw").click()
 	})
-	await ACtl.sleep(150)
-	await ACtl.closeTab(tabId)
+	// await ACtl.sleep(150)
+	// await ACtl.closeTab(tabId)
 }
 
 for (const [tabId, focused] of initialActiveTabsFocus) await ACtl.setTabState(tabId, "active")
