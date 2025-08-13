@@ -230,11 +230,11 @@ for (const [url, { knm, dln }] of posts.entries()) {
 	await ACtl.on("tabLoadEnd", tabId);
 
 	await ACtl.runInTab(tabId, () => {
-		// document.querySelector("#drw button.sv").click()
-		document.querySelector("#drw button.pvw").click()
+		document.querySelector("#drw button.sv").click()
+		// document.querySelector("#drw button.pvw").click()
 	})
-	// await ACtl.sleep(150)
-	// await ACtl.closeTab(tabId)
+	await ACtl.sleep(150)
+	await ACtl.closeTab(tabId)
 }
 
 for (const [tabId, focused] of initialActiveTabsFocus) await ACtl.setTabState(tabId, "active")
