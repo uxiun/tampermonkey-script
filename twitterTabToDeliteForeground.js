@@ -132,7 +132,12 @@ for (const [tabId, { title, url, window, active }] of tabsInfo) {
 			const cardTexts = [...tweet.querySelectorAll(`[data-testid="card.layoutSmall.detail"]`)]
 				.flatMap(c => [...c.childNodes])
 				.map(c => c.textContent)
-			const card = { url: cardUrl.length > 0 ? cardUrl[0] : null, texts: cardTexts }
+			const card = {
+				url: cardUrl.length > 0 ? cardUrl[0] : null,
+				texts: cardTexts
+					.map(s => s.replaceAll("\n", " ").trim())
+					.filter(s => s.length > 0)
+			}
 			const includesVideo = !!tweet.querySelector(`[data-testid="videoPlayer"]`)
 
 			let inner = null
@@ -153,7 +158,12 @@ for (const [tabId, { title, url, window, active }] of tabsInfo) {
 				const cardTexts = [...tweet.querySelectorAll(`[role="link"]:has([data-testid="User-Name"]) [data-testid="card.layoutSmall.detail"]`)]
 					.flatMap(c => [...c.childNodes])
 					.map(c => c.textContent)
-				const card = { url: cardUrl.length > 0 ? cardUrl[0] : null, texts: cardTexts }
+				const card = {
+					url: cardUrl.length > 0 ? cardUrl[0] : null,
+					texts: cardTexts
+						.map(s => s.replaceAll("\n", " ").trim())
+						.filter(s => s.length > 0)
+				}
 				const includesVideo = !!tweet.querySelector(`[role="link"]:has([data-testid="User-Name"]) [data-testid="videoPlayer"]`)
 				inner = {
 					content,
@@ -165,7 +175,6 @@ for (const [tabId, { title, url, window, active }] of tabsInfo) {
 					time
 				}
 			}
-
 
 			return {
 				content,
@@ -182,9 +191,14 @@ for (const [tabId, { title, url, window, active }] of tabsInfo) {
 
 		// isOuterOrInner?: boolean (true: outer, false: inner)
 		const dlnProvider = (tw, isOuterOrInner = undefined) => {
+			const texts = tw.card.texts
 			const innerMedia = tw.card.url
-				? `\n\n[${tw.card.texts[1]} ${tw.card.url}] (${tw.card.texts[0]})`
-				: tw.includesVideo
+				? (texts.length == 0
+					? tw.card.url
+					: texts.length == 1
+						? `[${texts[0]} ${tw.card.url}]`
+						: `[${tw.card.texts[1]} ${tw.card.url}] (${tw.card.texts[0]})`
+				) : tw.includesVideo
 					? "...video"
 					: ""
 			const media = tw.images.map(src => `+${src}`).join("\n")
@@ -225,8 +239,9 @@ console.log(posts)
 
 for (const [url, { knm, dln }] of posts.entries()) {
 	console.log(url)
-	const [tabId] = await ACtl.openURL(`https://dlt.kitetu.com/?knm=${knm}&dln=${encodeURIComponent(dln)}`,
-		{ rightOf: "#currentTab" })
+	const [tabId] = await ACtl.openURL(`https://dlt.kitetu.com/?knm=${knm}&dln=${encodeURIComponent(dln)}`, {
+		rightOf: "#rightmostTab"
+	})
 	await ACtl.on("tabLoadEnd", tabId);
 
 	await ACtl.runInTab(tabId, () => {
