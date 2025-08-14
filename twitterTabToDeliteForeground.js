@@ -67,9 +67,6 @@ const initialActiveTabsFocus = new Map(
 
 console.log("initialActiveTabsFocus", initialActiveTabsFocus)
 
-// 初期現在タブ
-let tabIdToFocus = null
-
 for (const [tabId, { title, url, window, active }] of tabsInfo) {
 	const tweetUrl = url.match(tweetUrlRegex)
 	if (tweetUrl) {
@@ -127,7 +124,8 @@ for (const [tabId, { title, url, window, active }] of tabsInfo) {
 			const hasInnerTweet = names.length > 1
 
 			const content = getTweetText(tweet)
-			const imageSources = [...tweet.querySelectorAll("[data-testid='tweetPhoto'] img")].map(img => img.getAttribute("src"))
+			const imageSources = [...tweet.querySelectorAll(`a[href*="/${tweetUrl.groups.user}/status/${tweetUrl.groups.tweetId}/photo"] [data-testid='tweetPhoto'] img`)].map(img => img.getAttribute("src"))
+
 			const cardUrl = [...tweet.querySelectorAll(`[data-testid="card.wrapper"] a`)].map(a => a.getAttribute("href"))
 			const cardTexts = [...tweet.querySelectorAll(`[data-testid="card.layoutSmall.detail"]`)]
 				.flatMap(c => [...c.childNodes])
@@ -225,22 +223,21 @@ ${media}`;
 			: dlnProvider(tw)
 
 		posts.set(url, { knm, dln })
-
-		const g = initialActiveTabsFocus.get(tabId)
-		if (g) tabIdToFocus = tabId
-		else if (g == undefined) {
-			console.log("close!")
-			// await ACtl.closeTab(tabId) // バグってるから一旦閉じないでおく
-		}
+		if (!initialActiveTabsFocus.has(tabId)) await ACtl.closeTab(tabId)
 	}
 }
 
 console.log(posts)
 
+for (const [tabId, focused] of initialActiveTabsFocus) {
+	await ACtl.setTabState(tabId, "active")
+	if (focused) await ACtl.setTabState(tabId, "focused")
+}
+
 for (const [url, { knm, dln }] of posts.entries()) {
 	console.log(url)
 	const [tabId] = await ACtl.openURL(`https://dlt.kitetu.com/?knm=${knm}&dln=${encodeURIComponent(dln)}`, {
-		rightOf: "#rightmostTab"
+		leftOf: "#leftmostTab"
 	})
 	await ACtl.on("tabLoadEnd", tabId);
 
@@ -251,6 +248,3 @@ for (const [url, { knm, dln }] of posts.entries()) {
 	await ACtl.sleep(150)
 	await ACtl.closeTab(tabId)
 }
-
-for (const [tabId, focused] of initialActiveTabsFocus) await ACtl.setTabState(tabId, "active")
-await ACtl.setTabState(tabIdToFocus, "focused")
