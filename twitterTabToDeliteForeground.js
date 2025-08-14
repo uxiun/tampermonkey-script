@@ -93,6 +93,9 @@ for (const [tabId, { title, url, window, active }] of tabsInfo) {
 
 
 		const [{ inner, ...tw }] = await ACtl.runInTab(tabId, () => {
+			const tweetUrlRegex = /https?:\/\/(?:x|twitter)\.com\/(?<user>[a-zA-Z0-9_]+)\/status\/(?<tweetId>\d+)/;
+			const tweetUrl = window.location.href.match(tweetUrlRegex)
+			
 			const urlRegex = /https?:\/\/[^\s]+/g;
 			const replaceByList = (targetRegex, replacementList) => originalString => {
 				let counter = 0
