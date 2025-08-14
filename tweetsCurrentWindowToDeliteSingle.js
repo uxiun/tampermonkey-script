@@ -216,9 +216,10 @@ ${media}`;
 			dln: dlnProvider(tw, tw.hasInnerTweet),
 			index: window.index,
 		})
-		if (!initialActiveTabsFocus.has(tabId)) await ACtl.closeTab(tabId)
+		// if (!initialActiveTabsFocus.has(tabId)) await ACtl.closeTab(tabId)
 	}
 
+	if (dlns.length == 0) continue
 	dlns.sort((a, b) => a.index - b.index)
 	console.log("dlns:", dlns)
 	const knm = dlns[0].knm
