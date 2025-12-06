@@ -1,6 +1,3 @@
-// 開いているツイートをデライトに転記（して、元々が非Active ならそのタブを閉じたい） AutoControl script
-// EXTERNAL_DEPENDENCY: 外部依存
-
 const tweetUrlRegex = /https?:\/\/(?:x|twitter)\.com\/(?<user>[a-zA-Z0-9_]+)\/status\/(?<tweetId>\d+)/;
 const tweetTitleRegex = /(\(\d+\)\s)?(?<name>.+)\s.+“(?<content>.+)”/
 // http:// または https:// で始まり、空白文字（スペース、改行など）以外の文字が続く文字列にマッチする正規表現
@@ -78,7 +75,7 @@ const setBy = noDuplicateFn => iterable => {
 // EXTERNAL_DEPENDENCY: AutoControl GUI
 // filter by URL Domain "x.com"
 // const tabsInfo = await ACtl.getTabInfo("x.com")
-const tabsInfo = await ACtl.getTabInfo("x.com by window")
+const tabsInfo = await ACtl.getTabInfo("x.com")
 console.log("tabsInfo", tabsInfo)
 const tabsInfoByWindow = groupBy(o => JSON.stringify(o.window))(Object.values(tabsInfo))
 console.log(tabsInfoByWindow)
@@ -96,7 +93,7 @@ console.log("initialActiveTabsFocus", initialActiveTabsFocus)
 const posts = []
 for (const tabsInfo of tabsInfoByWindow.values()) {
 	const dlns = []
-	for (const { title, url, id, window } of setBy(o => o.url)(tabsInfo).values()) {
+	for (const { title, url, id, window } of tabsInfo) {
 		const tabId = id
 		const tweetUrl = url.match(tweetUrlRegex)
 		if (!tweetUrl) continue
@@ -229,12 +226,14 @@ ${media}`;
 
 console.log("posts:", posts)
 
+const postSet = setBy(o => o.dln)(posts)
+
 for (const [tabId, focused] of initialActiveTabsFocus) {
 	await ACtl.setTabState(tabId, "active")
 	if (focused) await ACtl.setTabState(tabId, "focused")
 }
 
-for (const { knm, dln } of posts) {
+for (const { knm, dln } of postSet.values()) {
 	const [tabId] = await ACtl.openURL(`https://dlt.kitetu.com/?knm=${knm}&dln=${encodeURIComponent(dln)}`, {
 		leftOf: "#leftmostTab"
 	})
