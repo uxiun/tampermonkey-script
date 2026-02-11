@@ -181,7 +181,6 @@ for (const [tabId, { title, url, window, active }] of tabsInfo) {
 					.map(s => s.replaceAll("\n", " ").trim())
 					.filter(s => s.length > 0)
 			}
-			const includesVideo = !!tweet.querySelector(`[role="link"]:not(:has([data-testid="User-Name"])) [data-testid="videoPlayer"]`)
 
 			let inner = null
 			if (hasInnerTweet) {
@@ -221,6 +220,8 @@ for (const [tabId, { title, url, window, active }] of tabsInfo) {
 				}
 			}
 
+			const videoCount = tweet.querySelectorAll(`[data-testid="videoPlayer"]`).length
+
 			return {
 				content,
 				card,
@@ -228,7 +229,7 @@ for (const [tabId, { title, url, window, active }] of tabsInfo) {
 				id,
 				// id: userid, // runInTab() 内は独立しているので、外部の変数は参照できない
 				images: imageSources,
-				includesVideo,
+				includesVideo: videoCount > (inner && inner.includesVideo ? 1 : 0),
 				inner
 			}
 		})

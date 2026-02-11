@@ -228,7 +228,9 @@ ${media}`;
 					.map(s => s.replaceAll("\n", " ").trim())
 					.filter(s => s.length > 0)
 			}
-			const includesVideo = !!tweet.querySelector(`[role="link"]:not(:has([data-testid="User-Name"])) [data-testid="videoPlayer"]`)
+			const videoCount= tweet.querySelectorAll(`[data-testid="videoPlayer"]`).length
+			const innerVideo = tweet.querySelector(`[role="link"]:has([data-testid="User-Name"]) [data-testid="videoPlayer"]`)
+			const includesVideo  = videoCount > ((!!innerVideo) ? 1 : 0)
 
 			return {
 				content,
