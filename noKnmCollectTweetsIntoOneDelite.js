@@ -95,7 +95,7 @@ for (const tabsInfo of tabsInfoByWindow.values()) {
 		const tweetUrl = url.match(tweetUrlRegex)
 		if (!tweetUrl) continue
 		const postingTime = getTimestampFromTweetUrl(tweetUrl.groups.tweetId);
-		let userid = `@${tweetUrl.groups.user}`
+		let userid = tweetUrl.groups.user
 		const timestamp = formatDateTime(postingTime)
 
 		// isQuote?: boolean
@@ -118,16 +118,17 @@ for (const tabsInfo of tabsInfoByWindow.values()) {
 				.join("\n")
 			const tweetLinkPart = `[${timestamp.full} ${url}]`
 
+			// 外部変数 userid 依存
 			const dln =
 				`>>
 ${lines}
--- ${tw.name} {${tw.id ?? userid}} ${tweetLinkPart}
+-- ${tw.name} {@${tw.id ?? userid}} ${tweetLinkPart}
 ${media}`;
 
 			return dln
 		}
 
-		const knm = `${userid} ${postingTime.toLocaleDateString("ja-JP", {
+		const knm = `@${userid} ${postingTime.toLocaleDateString("ja-JP", {
 			year: "numeric",
 			month: "long",
 			day: "numeric"
@@ -147,14 +148,8 @@ ${media}`;
 			const tweetUrlRegex = /https?:\/\/(?:x|twitter)\.com\/(?<user>[a-zA-Z0-9_]+)\/status\/(?<tweetId>\d+)/;
 			const tweetUrl = window.location.href.match(tweetUrlRegex)
 
-			/**
-			 * 获取推文完整文本的函数
-			 * @param {Element} tweetElement - 推文的根元素
-			 * @returns {string} 包含表情符号和链接的完整文本
-			 */
-			const getTweetText = (tweetElement) => {
-				// 1. 获取推文文本的容器
-				const textContainer = tweetElement.querySelector("[data-testid='tweetText']");
+			// : Element -> string
+			const convertTweetText = textContainer => {
 				if (!textContainer) return "";
 
 				let fullText = "";
@@ -186,17 +181,41 @@ ${media}`;
 				});
 
 				return fullText;
+			}
+
+			/**
+			 * 获取推文完整文本的函数
+			 * @param {Element} tweetElement - 推文的根元素
+			 * @returns {string} 包含表情符号和链接的完整文本
+			 */
+			const getTweetText = (tweetElement) => {
+				// 1. 获取推文文本的容器
+				const textContainer = tweetElement.querySelector("[data-testid='tweetText']");
+
+				return convertTweetText(textContainer)
 			};
+
+			const getNameTextAndId = userNameElement => {
+				// document.querySelector(`[data-tuic-zooming-tweet]`).querySelector(`[data-testid='User-Name'] a [dir] > span`)
+				const id = userNameElement.querySelector(`a`).getAttribute("href").slice(1);
+				const textContainer = userNameElement.querySelector(`a [dir] > span`)
+				return [convertTweetText(textContainer), id]
+			}
 
 			// const tweet = document.querySelector("[data-testid='tweet']") // 返信元が表示されるとそっちを捉えてしまう
 
 			// EXTERNAL_DEPENDENCY: 拡張機能 Twitter UI Customizer
 			const tweet = document.querySelector("[data-tuic-zooming-tweet]")
 
-			const names = [...tweet.querySelectorAll(`[data-testid='User-Name']`)]
-				.map(d => d.childNodes[0].textContent)
-			const hasInnerTweet = names.length > 1
+			const names = []
+			let id = null
+			for (const userNameElement of tweet.querySelectorAll(`[data-testid='User-Name']`)) {
+				const [name, _id] = getNameTextAndId(userNameElement)
+				if (name.length > 0) names.push(name)
+				if (!id) id = _id
+			}
 
+			const hasInnerTweet = names.length > 1
 			const content = getTweetText(tweet)
 			const imageSources = [...tweet.querySelectorAll(`a[href*="/${tweetUrl.groups.user}/status/${tweetUrl.groups.tweetId}/photo"] [data-testid='tweetPhoto'] img`)].map(img => img.getAttribute("src"))
 			const cardUrl = [...tweet.querySelectorAll(`[data-testid="card.wrapper"] a`)].map(a => a.getAttribute("href"))
@@ -209,12 +228,13 @@ ${media}`;
 					.map(s => s.replaceAll("\n", " ").trim())
 					.filter(s => s.length > 0)
 			}
-			const includesVideo = !!tweet.querySelector(`[data-testid="videoPlayer"]`)
+			const includesVideo = !!tweet.querySelector(`[role="link"]:not(:has([data-testid="User-Name"])) [data-testid="videoPlayer"]`)
 
 			return {
 				content,
 				card,
 				name: names[0],
+				id,
 				// id: userid, // runInTab() 内は独立しているので、外部の変数は参照できない
 				images: imageSources,
 				includesVideo,
@@ -250,6 +270,7 @@ for (const [tabId, focused] of initialActiveTabsFocus) {
 }
 
 for (const { knm, dln } of postSet.values()) {
+	await ACtl.setClipboard(dln)
 	const [tabId] = await ACtl.openURL(`https://dlt.kitetu.com/?dln=${encodeURIComponent(dln)}`, {
 		leftOf: "#leftmostTab"
 	})
