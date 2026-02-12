@@ -197,9 +197,17 @@ ${media}`;
 
 			const getNameTextAndId = userNameElement => {
 				// document.querySelector(`[data-tuic-zooming-tweet]`).querySelector(`[data-testid='User-Name'] a [dir] > span`)
-				const id = userNameElement.querySelector(`a`).getAttribute("href").slice(1);
-				const textContainer = userNameElement.querySelector(`a [dir] > span`)
-				return [convertTweetText(textContainer), id]
+				const a = userNameElement.querySelector(`a`)
+				if (!!a) {
+					const id = a.getAttribute("href").slice(1);
+					const textContainer = userNameElement.querySelector(`a [dir] > span`)
+					return [convertTweetText(textContainer), id]
+				}
+
+				// a が見つからない = 引用ツイートと想定
+				const id = userNameElement.childNodes[1].querySelector(`:scope > div > div`).textContent.slice(1)
+				const nameContainer = userNameElement.childNodes[0].querySelector(`[dir] > span`)
+				return [convertTweetText(nameContainer), id]
 			}
 
 			// const tweet = document.querySelector("[data-testid='tweet']") // 返信元が表示されるとそっちを捉えてしまう
