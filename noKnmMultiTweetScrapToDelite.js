@@ -3,8 +3,6 @@
 
 const tweetUrlRegex = /https?:\/\/(?:x|twitter)\.com\/(?<user>[a-zA-Z0-9_]+)\/status\/(?<tweetId>\d+)/;
 const tweetTitleRegex = /(\(\d+\)\s)?(?<name>.+)\s.+“(?<content>.+)”/
-// http:// または https:// で始まり、空白文字（スペース、改行など）以外の文字が続く文字列にマッチする正規表現
-const urlRegex = /https?:\/\/[^\s]+/g;
 
 /** by Gemini
  * TweetのURLから投稿時刻のDateオブジェクトを取得する
@@ -240,9 +238,9 @@ for (const [tabId, { title, url, window, active }] of tabsInfo) {
 		const dlnProvider = (tw, isOuterOrInner = undefined) => {
 			const texts = tw.card.texts
 			const innerMedia = tw.card.url
-				? (texts.length == 0
+				? (texts.length === 0
 					? tw.card.url
-					: texts.length == 1
+					: texts.length === 1
 						? `[${texts[0]} ${tw.card.url}]`
 						: `[${tw.card.texts[1]} ${tw.card.url}] (${tw.card.texts[0]})`
 				) : tw.includesVideo
@@ -254,7 +252,7 @@ for (const [tabId, { title, url, window, active }] of tabsInfo) {
 				.map(k => k.trim())
 				.filter(k => k.length > 0)
 				.join("\n")
-			const tweetLinkPart = isOuterOrInner != false
+			const tweetLinkPart = isOuterOrInner !== false
 				? `[${timestamp.full} ${url}]`
 				: tw.time
 
@@ -283,7 +281,7 @@ for (const [tabId, focused] of initialActiveTabsFocus) {
 	if (focused) await ACtl.setTabState(tabId, "focused")
 }
 
-for (const [url, { knm, dln }] of posts.entries()) {
+for (const [_url, { _knm, dln }] of posts.entries()) {
 	await ACtl.setClipboard(dln)
 	const [tabId] = await ACtl.openURL(`https://dlt.kitetu.com/?dln=${encodeURIComponent(dln)}`, {
 		leftOf: "#leftmostTab"

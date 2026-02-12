@@ -1,7 +1,5 @@
 const tweetUrlRegex = /https?:\/\/(?:x|twitter)\.com\/(?<user>[a-zA-Z0-9_]+)\/status\/(?<tweetId>\d+)/;
 const tweetTitleRegex = /(\(\d+\)\s)?(?<name>.+)\s.+“(?<content>.+)”/
-// http:// または https:// で始まり、空白文字（スペース、改行など）以外の文字が続く文字列にマッチする正規表現
-const urlRegex = /https?:\/\/[^\s]+/g;
 
 /** by Gemini
  * TweetのURLから投稿時刻のDateオブジェクトを取得する
@@ -53,7 +51,7 @@ const groupBy = groupFn => iterable => {
 	[...iterable].forEach(o => {
 		const key = groupFn(o)
 		const v = m.get(key)
-		if (v != undefined) v.push(o)
+		if (v !== undefined) v.push(o)
 		else m.set(key, [o])
 	})
 	return m
@@ -95,16 +93,16 @@ for (const tabsInfo of tabsInfoByWindow.values()) {
 		const tweetUrl = url.match(tweetUrlRegex)
 		if (!tweetUrl) continue
 		const postingTime = getTimestampFromTweetUrl(tweetUrl.groups.tweetId);
-		let userid = tweetUrl.groups.user
+		const userid = tweetUrl.groups.user
 		const timestamp = formatDateTime(postingTime)
 
 		// isQuote?: boolean
 		const dlnProvider = (tw, isQuote = false) => {
 			const texts = tw.card.texts
 			const innerMedia = tw.card.url
-				? (texts.length == 0
+				? (texts.length === 0
 					? tw.card.url
-					: texts.length == 1
+					: texts.length === 1
 						? `[${texts[0]} ${tw.card.url}]`
 						: `[${tw.card.texts[1]} ${tw.card.url}] (${tw.card.texts[0]})`
 				) : tw.includesVideo
@@ -198,7 +196,7 @@ ${media}`;
 			const getNameTextAndId = userNameElement => {
 				// document.querySelector(`[data-tuic-zooming-tweet]`).querySelector(`[data-testid='User-Name'] a [dir] > span`)
 				const a = userNameElement.querySelector(`a`)
-				if (!!a) {
+				if (a) {
 					const id = a.getAttribute("href").slice(1);
 					const textContainer = userNameElement.querySelector(`a [dir] > span`)
 					return [convertTweetText(textContainer), id]
@@ -236,9 +234,9 @@ ${media}`;
 					.map(s => s.replaceAll("\n", " ").trim())
 					.filter(s => s.length > 0)
 			}
-			const videoCount= tweet.querySelectorAll(`[data-testid="videoPlayer"]`).length
+			const videoCount = tweet.querySelectorAll(`[data-testid="videoPlayer"]`).length
 			const innerVideo = tweet.querySelector(`[role="link"]:has([data-testid="User-Name"]) [data-testid="videoPlayer"]`)
-			const includesVideo  = videoCount > ((!!innerVideo) ? 1 : 0)
+			const includesVideo = videoCount > ((!!innerVideo) ? 1 : 0)
 
 			return {
 				content,
@@ -262,7 +260,7 @@ ${media}`;
 		// if (!initialActiveTabsFocus.has(tabId)) await ACtl.closeTab(tabId)
 	}
 
-	if (dlns.length == 0) continue
+	if (dlns.length === 0) continue
 	dlns.sort((a, b) => a.index - b.index)
 	console.log("dlns:", dlns)
 	const knm = dlns[0].knm
@@ -279,7 +277,7 @@ for (const [tabId, focused] of initialActiveTabsFocus) {
 	if (focused) await ACtl.setTabState(tabId, "focused")
 }
 
-for (const { knm, dln } of postSet.values()) {
+for (const { _knm, dln } of postSet.values()) {
 	await ACtl.setClipboard(dln)
 	const [tabId] = await ACtl.openURL(`https://dlt.kitetu.com/?dln=${encodeURIComponent(dln)}`, {
 		leftOf: "#leftmostTab"
