@@ -190,7 +190,7 @@ for (const [tabId, { title, url, window, active }] of tabsInfo) {
 				if (!!a) {
 					const id = a.getAttribute("href").slice(1);
 					const textContainer = userNameElement.querySelector(`a [dir] > span`);
-					return [convertTweetText(textContainer), id];
+					return [textContainer.textContent, id];
 				}
 
 				// a が見つからない = 引用ツイートと想定
@@ -199,7 +199,7 @@ for (const [tabId, { title, url, window, active }] of tabsInfo) {
 					.textContent.slice(1);
 				const nameContainer =
 					userNameElement.childNodes[0].querySelector(`[dir] > span`);
-				return [convertTweetText(nameContainer), id];
+				return [nameContainer.textContent, id];
 			};
 
 			// const tweet = document.querySelector("[data-testid='tweet']") // 返信元が表示されるとそっちを捉えてしまう
@@ -359,7 +359,7 @@ for (const [tabId, focused] of initialActiveTabsFocus) {
 }
 
 for (const [_url, { _knm, dln }] of posts.entries()) {
-	// await ACtl.setClipboard(dln)
+	await ACtl.setClipboard(dln)
 	const [tabId] = await ACtl.openURL(
 		`https://dlt.kitetu.com/?dln=${encodeURIComponent(dln)}`,
 		{

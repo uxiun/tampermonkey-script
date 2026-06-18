@@ -247,7 +247,7 @@ ${media}`;
 				if (a) {
 					const id = a.getAttribute("href").slice(1);
 					const textContainer = userNameElement.querySelector(`a [dir] > span`);
-					return [convertTweetText(textContainer), id];
+					return [textContainer.textContent, id];
 				}
 
 				// a が見つからない = 引用ツイートと想定
@@ -256,7 +256,7 @@ ${media}`;
 					.textContent.slice(1);
 				const nameContainer =
 					userNameElement.childNodes[0].querySelector(`[dir] > span`);
-				return [convertTweetText(nameContainer), id];
+				return [nameContainer.textContent, id];
 			};
 
 			// const tweet = document.querySelector("[data-testid='tweet']") // 返信元が表示されるとそっちを捉えてしまう
