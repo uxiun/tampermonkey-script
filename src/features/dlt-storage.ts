@@ -44,10 +44,10 @@ export function collectAndMergeLinks(newLinks: PostLink[]) {
     updatedHistory.unshift(newLink)
   })
 
-  // 必要に応じて最大件数（例: 500件）でキャップをかける
-  if (updatedHistory.length > 500) {
-    updatedHistory = updatedHistory.slice(0, 500)
-  }
+  // // 必要に応じて最大件数（例: 500件）でキャップをかける
+  // if (updatedHistory.length > 500) {
+  //   updatedHistory = updatedHistory.slice(0, 500)
+  // }
 
   // 3. 保存
   localStorage.setItem(DLT_HISTORY_KEY, JSON.stringify(updatedHistory))

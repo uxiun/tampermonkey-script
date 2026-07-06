@@ -19,6 +19,7 @@ export interface AppState {
   searchQuery: string
   searchResults: PostLink[]
   isSearching: boolean
+  lastAddedCount: number
 }
 
 let globalState: AppState = {
@@ -31,6 +32,7 @@ let globalState: AppState = {
   searchQuery: "",
   searchResults: [],
   isSearching: false,
+  lastAddedCount: 0,
 }
 
 function syncLocalStorage(state: AppState) {
@@ -44,12 +46,16 @@ export function startLinkMemo() {
   // (要素の取得セレクターはあなたのサイトの環境に合わせて調整してください)
   const scrapedLinks: PostLink[] = getAllMyLinkFromPage()
   console.log("scrapedLinks", scrapedLinks)
+  const beforeCount = (
+    JSON.parse(localStorage.getItem(DLT_HISTORY_KEY) || "[]") as PostLink[]
+  ).length
 
   // 💡 履歴をマージして更新
   collectAndMergeLinks(scrapedLinks)
 
   // 2. 更新された最新の履歴を globalState に同期して描画
   syncLocalStorage(globalState)
+  globalState.lastAddedCount = globalState.history.length - beforeCount
 
   // 💡【重要】リロード対策：左の台（leftDock）の状態も localStorage から復元する！
   globalState.leftDock = JSON.parse(localStorage.getItem(DLT_DOCK_KEY) || "[]")
@@ -74,6 +80,13 @@ export function startLinkMemo() {
   window.addEventListener("dlt-dock-updated", (e: any) => {
     console.log("⚓ 同一タブ内での台の更新を検知:", e.detail)
     const links: PostLink[] = e.detail
+
+    // 増えた差分を計算（手動リンクヒントで1件ないし複数件増えた場合）
+    const diff = links.length - globalState.leftDock.length
+    if (diff > 0) {
+      globalState.lastAddedCount = diff // 直近追加件数を更新
+    }
+
     globalState.leftDock = links
 
     collectAndMergeLinks(links)
@@ -374,17 +387,22 @@ export function renderWidget(state: AppState) {
   if (!widget) {
     widget = document.createElement("div")
     widget.id = "dlt-link-memo-widget"
+
     widget.innerHTML = `
       <div style="background: #34495e; padding: 8px; display: flex; align-items: center; gap: 8px; height: 36px; box-sizing: border-box;">
-        <input id="dlt-search-input" type="text" placeholder="Type to search..."
+        <input id="dlt-search-input" type="text" placeholder="Type to search..." autocomplete="off"
           style="background: #1a252f; border: 1px solid #3498db; color: white; padding: 4px 8px; border-radius: 4px; flex: 1; outline: none; font-size: 13px;" />
-        <span id="dlt-page-indicator" style="font-size: 11px; color: #bdc3c7; font-family: monospace;">Page: 1/1</span>
+
+        <span id="dlt-storage-status" style="font-size: 10px; color: #95a5a6; font-family: monospace; background: #1a252f; padding: 2px 6px; border-radius: 4px;"></span>
+
+        <span id="dlt-page-indicator" style="font-size: 11px; color: #bdc3c7; font-family: monospace;">1/1</span>
       </div>
       <div style="display: flex; flex: 1; overflow: hidden; height: calc(100% - 36px);">
         <div id="dlt-dock-pane" style="width: 40%; background: #1e272e; border-right: 1px solid #3d4e5d; padding: 8px; overflow: hidden; box-sizing: border-box;"></div>
         <div id="dlt-list-pane" style="width: 60%; padding: 8px; overflow: hidden; background: #2c3e50; box-sizing: border-box;"></div>
       </div>
     `
+
     document.body.appendChild(widget)
 
     const input = widget.querySelector("#dlt-search-input") as HTMLInputElement
@@ -445,6 +463,27 @@ export function renderWidget(state: AppState) {
 
   if (!state.isWidgetActive) return
 
+  // ==========================================
+  // 💡 【新設】総件数・容量・追加件数のリアルタイム計算と描画
+  // ==========================================
+  const storageStatus = document.getElementById("dlt-storage-status")
+  if (storageStatus) {
+    const totalItems = state.history.length
+
+    // localStorageから生テキストを取得してデータ容量を計算
+    const rawString = localStorage.getItem(DLT_HISTORY_KEY) || "[]"
+    // 文字列の長さ * 2バイト を 1024 で割って kB を算出（小数点第1位まで）
+    const kilobytes = ((rawString.length * 2) / 1024).toFixed(1)
+
+    // 「+n」の文字列を組み立て（0件より多ければプラス表記、なければ空）
+    const plusText =
+      state.lastAddedCount > 0
+        ? ` <span style="color: #2ecc71; font-weight: bold;">+${state.lastAddedCount}</span>`
+        : ""
+
+    storageStatus.innerHTML = `${totalItems} items (${kilobytes} kB)${plusText}`
+  }
+
   const inputEl = document.getElementById(
     "dlt-search-input",
   ) as HTMLInputElement
@@ -461,7 +500,7 @@ export function renderWidget(state: AppState) {
 
   const pageIndicator = document.getElementById("dlt-page-indicator")
   if (pageIndicator) {
-    pageIndicator.innerText = `Page: ${state.currentPage + 1}/${maxPage}`
+    pageIndicator.innerText = `${state.currentPage + 1}/${maxPage}`
   }
 
   const dockPane = document.getElementById("dlt-dock-pane")
