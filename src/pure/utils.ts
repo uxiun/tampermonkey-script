@@ -1,3 +1,11 @@
+export function isPromise(value: any) {
+  return (
+    value !== null &&
+    (typeof value === "object" || typeof value === "function") &&
+    typeof value.then === "function"
+  )
+}
+
 export function dbg<T>(e: T) {
   console.log(e)
   return e

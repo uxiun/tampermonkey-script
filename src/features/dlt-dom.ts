@@ -13,6 +13,27 @@ type GetLinkElement = {
   el: Element | undefined | null
 }
 
+export const getLinkAuto = (el: Element | undefined | null): PostLink[] => {
+  if (!el) return []
+
+  if (el.nodeName === "ARTICLE" && el.classList.contains("oln")) {
+    const id = el?.getAttribute("data-kno")?.slice(2)
+    const title = el
+      ?.querySelector(":scope > .ikon > .knm")
+      ?.getAttribute("data-src")
+
+    return id && title ? [{ id, title }] : []
+  } else if (el.nodeName === "A") {
+    const id = el?.getAttribute("href")?.split("KNo.")[1]
+    const title = el?.getAttribute("data-src")
+    return id && title ? [{ id, title }] : []
+  } else if (el.classList.contains("oln") && el.classList.contains("ikon")) {
+    return getLinkAuto(el.querySelector(":scope > a.knm"))
+  } else {
+    return getLinkAuto(el.closest("article.oln"))
+  }
+}
+
 const getLink = ({ type, el }: GetLinkElement): PostLink[] => {
   if (type === "article") {
     const id = el?.getAttribute("data-kno")?.slice(2)
@@ -32,11 +53,25 @@ type GetLinkTargetMainPage = "list" | "listsFg" | "listsBg"
 
 type GetLinkTarget = GetLinkTargetMainPage | "opening" | "openingOtherSide"
 
+export const getAllMyLinkFromPage = () => {
+  const params = new URLSearchParams(window.location.search)
+  const links =
+    params.has("fg") || params.has("bg")
+      ? getLinkOnFgBgPage()([
+          "opening",
+          "openingOtherSide",
+          "list",
+          "listsFg",
+          "listsBg",
+        ])
+      : getLinkMainPage()(["list", "listsFg", "listsBg"])
+
+  return links
+}
+
 export const getLinkMainPage =
   (option = { limitOwn: true } as GetLinkOption) =>
   (targets = ["list", "listsFg"] as GetLinkTarget[]) => {
-    console.log("getLinkMainPage", option, targets)
-
     if (targets.includes("list")) {
       const links: PostLink[] = Array.from(
         document.querySelectorAll(
@@ -48,13 +83,11 @@ export const getLinkMainPage =
           fgbg = [
             ...fgbg,
             ...Array.from(
-              dbg(
-                el
-                  .closest(".bln")
-                  ?.querySelectorAll(
-                    `:scope > .oln.ikon${option.limitOwn ? ".I" : ""} > a.knm`,
-                  ) || [],
-              ),
+              el
+                .closest(".bln")
+                ?.querySelectorAll(
+                  `:scope > .oln.ikon${option.limitOwn ? ".I" : ""} > a.knm`,
+                ) || [],
             ).flatMap(el => getLink({ type: "fg/bg", el })),
           ]
         }
@@ -62,10 +95,8 @@ export const getLinkMainPage =
           fgbg = [
             ...fgbg,
             ...Array.from(
-              dbg(
-                el.querySelectorAll(
-                  `:scope > .bg > .oln${option.limitOwn ? ".I" : ""} > a.knm`,
-                ),
+              el.querySelectorAll(
+                `:scope > .bg > .oln${option.limitOwn ? ".I" : ""} > a.knm`,
               ),
             ).flatMap(el => getLink({ type: "fg/bg", el })),
           ]

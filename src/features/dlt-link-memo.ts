@@ -1,4 +1,11 @@
-import { DLT_HISTORY_KEY, PostLink, postLinkTextList } from "./dlt-storage"
+import { getAllMyLinkFromPage } from "./dlt-dom"
+import {
+  collectAndMergeLinks,
+  DLT_DOCK_KEY,
+  DLT_HISTORY_KEY,
+  PostLink,
+  postLinkTextList,
+} from "./dlt-storage"
 import { dltkeys } from "./keys"
 import { HintMap, linkHint } from "./link-hint"
 
@@ -33,7 +40,20 @@ function syncLocalStorage(state: AppState) {
 export function startLinkMemo() {
   console.log("🚀 startLinkMemo")
 
+  // 1. 【自動収集】ページが開かれた／更新された瞬間、画面内の投稿を全部さらって自動収集
+  // (要素の取得セレクターはあなたのサイトの環境に合わせて調整してください)
+  const scrapedLinks: PostLink[] = getAllMyLinkFromPage()
+  console.log("scrapedLinks", scrapedLinks)
+
+  // 💡 履歴をマージして更新
+  collectAndMergeLinks(scrapedLinks)
+
+  // 2. 更新された最新の履歴を globalState に同期して描画
   syncLocalStorage(globalState)
+
+  // 💡【重要】リロード対策：左の台（leftDock）の状態も localStorage から復元する！
+  globalState.leftDock = JSON.parse(localStorage.getItem(DLT_DOCK_KEY) || "[]")
+
   renderWidget(globalState)
 
   if ((window as any).__dlt_memo_listener_installed__) return
@@ -43,6 +63,25 @@ export function startLinkMemo() {
     if (e.key === DLT_HISTORY_KEY) {
       globalState.history = JSON.parse(e.newValue || "[]")
       if (globalState.isWidgetActive) renderWidget(globalState)
+    }
+    if (e.key === DLT_DOCK_KEY) {
+      globalState.leftDock = JSON.parse(e.newValue || "[]")
+      if (globalState.isWidgetActive) renderWidget(globalState)
+    }
+  })
+
+  // 💡【新設】同じタブ内で myLinkHint 等が台を更新した瞬間をキャッチ
+  window.addEventListener("dlt-dock-updated", (e: any) => {
+    console.log("⚓ 同一タブ内での台の更新を検知:", e.detail)
+    const links: PostLink[] = e.detail
+    globalState.leftDock = links
+
+    collectAndMergeLinks(links)
+    syncLocalStorage(globalState)
+
+    // 直接最新のデータを受け取る
+    if (globalState.isWidgetActive) {
+      renderWidget(globalState) // 即座に描画更新！
     }
   })
 
@@ -107,6 +146,8 @@ export function startLinkMemo() {
       // パターンA：右の検索欄に入力中の場合
       // -------------------------------------------------------------
       if (state.isSearching) {
+        if (e.isComposing) return
+
         // 現在のページに表示されている検索結果のサブセットを取得
         const currentItems = getPagedItems(state)
         const maxPage = Math.max(
@@ -154,30 +195,40 @@ export function startLinkMemo() {
           renderWidget(state)
           return
         }
-        if (e.key === "ArrowRight") {
-          e.preventDefault() // input内でのカーソル移動を殺してページめくりに充てる
-          if (state.currentPage < maxPage - 1) {
-            state.currentPage++
-            state.cursorIndex = 0
-            renderWidget(state)
-          }
-          return
+        // if (e.key === "ArrowRight") {
+        //   e.preventDefault() // input内でのカーソル移動を殺してページめくりに充てる
+        //   if (state.currentPage < maxPage - 1) {
+        //     state.currentPage++
+        //     state.cursorIndex = 0
+        //     renderWidget(state)
+        //   }
+        //   return
+        // }
+        // if (e.key === "ArrowLeft") {
+        //   e.preventDefault()
+        //   if (state.currentPage > 0) {
+        //     state.currentPage--
+        //     state.cursorIndex = 0
+        //     renderWidget(state)
+        //   }
+        //   return
+        // }
+        if (e.key === "Backspace" && state.searchQuery === "") {
+          state.leftDock = []
+          localStorage.setItem(DLT_DOCK_KEY, JSON.stringify(state.leftDock))
+          handleSearch("", state)
+          renderWidget(state)
         }
-        if (e.key === "ArrowLeft") {
-          e.preventDefault()
-          if (state.currentPage > 0) {
-            state.currentPage--
-            state.cursorIndex = 0
-            renderWidget(state)
-          }
-          return
-        }
+
         if (e.key === "Enter" && !e.isComposing) {
           e.preventDefault()
           e.stopPropagation()
           const target = currentItems[state.cursorIndex]
           if (target) {
             state.leftDock.push(target)
+            // 💡 localStorage にも保存して他タブに通知
+            localStorage.setItem(DLT_DOCK_KEY, JSON.stringify(state.leftDock))
+
             state.searchQuery = ""
             state.currentPage = 0
             state.cursorIndex = 0
@@ -276,11 +327,16 @@ export function startLinkMemo() {
           break
         case "Enter": {
           const target = currentItems[state.cursorIndex]
-          if (target) state.leftDock.push(target)
+          if (target) {
+            state.leftDock.push(target)
+            // 💡 保存＆同期
+            localStorage.setItem(DLT_DOCK_KEY, JSON.stringify(state.leftDock))
+          }
           break
         }
         case "Backspace":
           state.leftDock = []
+          localStorage.setItem(DLT_DOCK_KEY, JSON.stringify(state.leftDock))
           break
         case " ":
           executeLinkOperation(state.leftDock)
@@ -463,7 +519,7 @@ function executeLinkOperation(links: PostLink[]) {
             targetElements: [
               {
                 type: "terminal",
-                keys: [" ", "enter"],
+                keys: ["d", "l"],
 
                 elements: () => {
                   const fg = el.querySelector(":scope > a.sgn_bg")

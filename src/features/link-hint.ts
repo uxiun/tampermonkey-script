@@ -1,4 +1,30 @@
 // ==========================================
+// 💡 複数打鍵（コンビネーション）を自動生成するヘルパー
+// ==========================================
+function generateDynamicKeys(
+  targetCount: number,
+  baseKeys: string[],
+): string[] {
+  // 要素数がベースキーの数以下なら、そのまま1文字ずつ割り当てる
+  if (targetCount <= baseKeys.length) {
+    return baseKeys.slice(0, targetCount)
+  }
+
+  // 要素数の方が多い場合は、動的に2文字の組み合わせを作っていく
+  let hints: string[] = [""]
+  while (hints.length < targetCount) {
+    const nextHints: string[] = []
+    for (const prefix of hints) {
+      for (const key of baseKeys) {
+        nextHints.push(prefix + key)
+      }
+    }
+    hints = nextHints
+  }
+  return hints.slice(0, targetCount)
+}
+
+// ==========================================
 // 1. 型定義（Interfaces）
 // ==========================================
 
@@ -46,36 +72,42 @@ export function linkHint<S>(hintMap: HintMap<S>, state: S): void {
   }
   removeLabels()
 
-  ;(window as any).__dlt_link_hint_active__ = true
-
   // 画面上のすべてのターゲット要素を一つのフラットな配列に集約する
   const activeHints: {
-    key: string
+    code: string
     element: HTMLElement
     sourceTarget: HintTarget<S>
   }[] = []
 
   if (hintMap.targetElements) {
     hintMap.targetElements.forEach(t => {
-      const elements = t.elements()
-      elements.forEach((el, index) => {
-        if (index >= t.keys.length) return // キーが足りなくなったら終了
+      const elements = Array.from(t.elements()).filter(el => {
         const htmlEl = el as HTMLElement
         const rect = htmlEl.getBoundingClientRect()
+        return !(rect.top < 0 || rect.left < 0 || rect.top > window.innerHeight)
+      })
 
-        if (rect.top < 0 || rect.left < 0 || rect.top > window.innerHeight)
-          return
+      // 💡【重要】指定されたキー群をベースに、視界内の要素数にジャスト足りるだけの「綴り」を自動生成
+      const dynamicKeys = generateDynamicKeys(elements.length, t.keys)
 
-        const key = t.keys[index]
+      elements.forEach((el, index) => {
+        if (index >= t.keys.length) return // キーが足りなくなったら終了
+
+        const htmlEl = el as HTMLElement
+        const rect = htmlEl.getBoundingClientRect()
+        // if (rect.top < 0 || rect.left < 0 || rect.top > window.innerHeight)
+        //   return
+
+        const code = dynamicKeys[index]
         // sourceTarget として、この要素がどの要素群（TerminalかNon-Terminalか）から来たかを記憶させておく
-        activeHints.push({ key, element: htmlEl, sourceTarget: t })
+        activeHints.push({ code, element: htmlEl, sourceTarget: t })
 
         // ラベル作成
         const [offsetX, offsetY] = t.hintOffsetPx ?? [0, 0]
 
         const label = document.createElement("span")
         label.className = "my-ac-hint-label"
-        label.innerText = key.trim() === "" ? "SPACE" : key.toUpperCase()
+        label.innerText = code.toUpperCase()
         label.style.cssText = `
           position: fixed; top: ${offsetY + rect.top}px; left: ${offsetX + rect.left}px;
           z-index: 10000000; background: #f1c40f; color: black; font-weight: bold; font-size: 12px;
@@ -87,10 +119,12 @@ export function linkHint<S>(hintMap: HintMap<S>, state: S): void {
     })
   }
 
+  let inputBuffer = ""
+
   // リスナーは常に「この階層（ターン）で唯一つだけ」登録
   const keyListener = (e: KeyboardEvent) => {
     e.preventDefault()
-    e.stopImmediatePropagation()
+    e.stopPropagation()
 
     if (e.key === "Escape") {
       cleanup()
@@ -98,7 +132,31 @@ export function linkHint<S>(hintMap: HintMap<S>, state: S): void {
     }
 
     const pressedKey = e.key.toLowerCase()
-    const match = activeHints.find(h => h.key === pressedKey)
+    // --- 省略：changeState と nonTerminal キーの判定（前回と同様） ---
+    // パターン2: 状態変更（ChangeState）にマッチした場合（キーを奪うのでストップ propagation）
+    const changeAction = hintMap.changeState?.get(pressedKey)
+    if (changeAction) {
+      e.stopImmediatePropagation()
+      const newState = changeAction(state)
+      if (hintMap.showState) hintMap.showState(newState)
+      // 状態が変わったので、新しい状態を引き連れて「現在の階層」を再描画（リフレッシュ）
+      cleanup()
+      setTimeout(() => linkHint(hintMap, newState), 0)
+      return
+    }
+
+    // パターン3: 文字入力による非ターミナル遷移（NonTerminalキー）
+    const nextMap = hintMap.nonTerminal?.get(pressedKey)
+    if (nextMap) {
+      e.stopImmediatePropagation()
+      cleanup()
+      setTimeout(() => linkHint(nextMap, state), 0)
+      return
+    }
+
+    //
+    inputBuffer += pressedKey
+    const match = activeHints.find(h => h.code === inputBuffer)
 
     if (match) {
       cleanup() // 遷移する前に現在のリスナーとラベルを完全に解除
@@ -126,28 +184,6 @@ export function linkHint<S>(hintMap: HintMap<S>, state: S): void {
         }, 0)
         return
       }
-    }
-
-    // --- 省略：changeState と nonTerminal キーの判定（前回と同様） ---
-    // パターン2: 状態変更（ChangeState）にマッチした場合（キーを奪うのでストップ propagation）
-    const changeAction = hintMap.changeState?.get(pressedKey)
-    if (changeAction) {
-      e.stopImmediatePropagation()
-      const newState = changeAction(state)
-      if (hintMap.showState) hintMap.showState(newState)
-      // 状態が変わったので、新しい状態を引き連れて「現在の階層」を再描画（リフレッシュ）
-      cleanup()
-      setTimeout(() => linkHint(hintMap, newState), 0)
-      return
-    }
-
-    // パターン3: 文字入力による非ターミナル遷移（NonTerminalキー）
-    const nextMap = hintMap.nonTerminal?.get(pressedKey)
-    if (nextMap) {
-      e.stopImmediatePropagation()
-      cleanup()
-      setTimeout(() => linkHint(nextMap, state), 0)
-      return
     }
   }
 

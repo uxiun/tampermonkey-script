@@ -1,4 +1,5 @@
 export const DLT_HISTORY_KEY = "dlt-history"
+export const DLT_DOCK_KEY = "dlt-dock"
 
 // localStorageに保存するデータ型
 export interface PostLink {
@@ -36,7 +37,7 @@ export function collectAndMergeLinks(newLinks: PostLink[]) {
   let updatedHistory = [...currentHistory]
 
   // 2. 新しく取得したリンクを1つずつマージ
-  newLinks.forEach(newLink => {
+  newLinks.reverse().forEach(newLink => {
     // 💡 既存の同じIDを一旦削除（タイトル更新への対応 ＆ 最新順ソートのための位置リセット）
     updatedHistory = updatedHistory.filter(p => p.id !== newLink.id)
     // 💡 常に配列の先頭（最新）に突っ込む
