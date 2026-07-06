@@ -46,6 +46,8 @@ export function linkHint<S>(hintMap: HintMap<S>, state: S): void {
   }
   removeLabels()
 
+  ;(window as any).__dlt_link_hint_active__ = true
+
   // 画面上のすべてのターゲット要素を一つのフラットな配列に集約する
   const activeHints: {
     key: string
@@ -73,9 +75,9 @@ export function linkHint<S>(hintMap: HintMap<S>, state: S): void {
 
         const label = document.createElement("span")
         label.className = "my-ac-hint-label"
-        label.innerText = key.toUpperCase()
+        label.innerText = key.trim() === "" ? "SPACE" : key.toUpperCase()
         label.style.cssText = `
-          position: fixed; top: ${offsetY + rect.top + window.scrollY}px; left: ${offsetX + rect.left + window.scrollX}px;
+          position: fixed; top: ${offsetY + rect.top}px; left: ${offsetX + rect.left}px;
           z-index: 10000000; background: #f1c40f; color: black; font-weight: bold; font-size: 12px;
           padding: 2px 4px; border-radius: 3px; border: 1px solid #d35400; box-shadow: 0 2px 5px rgba(0,0,0,0.3);
           pointer-events: none;
@@ -152,6 +154,7 @@ export function linkHint<S>(hintMap: HintMap<S>, state: S): void {
   const cleanup = () => {
     removeLabels()
     window.removeEventListener("keydown", keyListener, true)
+    ;(window as any).__dlt_link_hint_active__ = false
   }
 
   window.addEventListener("keydown", keyListener, true)

@@ -49,6 +49,9 @@ export function startLinkMemo() {
   window.addEventListener(
     "keydown",
     (e: KeyboardEvent) => {
+      // 【超重要】リンクヒントモード（自動リンク）が動いている間は、このメモ小窓の全ショトカを完全スルー
+      if ((window as any).__dlt_link_hint_active__) return
+
       const state = globalState
 
       // 1. 小窓が非アクティブな時
@@ -291,14 +294,31 @@ export function renderWidget(state: AppState) {
       renderWidget(state)
     })
 
-    // 👈 インプット要素の「内部」で発生したEscが、ブラウザの標準挙動で消されるのを防ぐ絶対防御壁
-    input.addEventListener(
-      "keydown",
-      e => {
-        if (e.key === "Escape") {
-          e.preventDefault()
-          e.stopPropagation()
-          input.blur()
+    // // 👈 インプット要素の「内部」で発生したEscが、ブラウザの標準挙動で消されるのを防ぐ絶対防御壁
+    // input.addEventListener(
+    //   "keydown",
+    //   e => {
+    //     if (e.key === "Escape") {
+    //       e.preventDefault()
+    //       e.stopPropagation()
+    //       input.blur()
+    //       state.isSearching = false
+    //       state.searchQuery = ""
+    //       state.searchResults = []
+    //       state.currentPage = 0
+    //       state.cursorIndex = 0
+    //       renderWidget(state)
+    //     }
+    //   },
+    //   true,
+    // )
+
+    // 💡【新発想】VimiumCがEscを横取りしてフォーカスを外した瞬間（blur）を検知して、
+    // 連動してシステム側も一発で [ HISTORY ] モードへ安全に押し戻す最強の裏口
+    input.addEventListener("blur", () => {
+      // タイムアウトを挟まないと、Enter確定時のblurと衝突して挙動がバグるのを防止
+      setTimeout(() => {
+        if (state.isSearching && document.activeElement !== input) {
           state.isSearching = false
           state.searchQuery = ""
           state.searchResults = []
@@ -306,9 +326,8 @@ export function renderWidget(state: AppState) {
           state.cursorIndex = 0
           renderWidget(state)
         }
-      },
-      true,
-    )
+      }, 100)
+    })
   }
 
   widget.style.cssText = `
@@ -378,20 +397,25 @@ export function renderWidget(state: AppState) {
 function executeLinkOperation(links: PostLink[]) {
   console.log("🚚 出荷実行!! リンク数:", links.length, links)
 
+  // 💡 リンクヒント起動の合図となるフラグを立てる
+  // ;(window as any).__dlt_link_hint_active__ = true
+
   const hintmap: HintMap<null> = {
     targetElements: [
       {
         type: "non-terminal",
         keys: dltkeys.easy,
         elements() {
-          return Array.from(document.querySelectorAll(".pg > .bln"))
+          const e = document.querySelector(".bln.hng")
+          const articles = Array.from(document.querySelectorAll(".pg > .bln"))
+          return e ? [e, ...articles] : articles
         },
         hintMap(el) {
           return {
             targetElements: [
               {
                 type: "terminal",
-                keys: "dk".split(""),
+                keys: [" ", "enter"],
 
                 elements: () => {
                   const fg = el.querySelector(":scope > a.sgn_bg")
@@ -424,6 +448,8 @@ function executeLinkOperation(links: PostLink[]) {
                   })
 
                   input.dispatchEvent(enterEvent)
+
+                  // ;(window as any).__dlt_link_hint_active__ = false
                 },
               },
             ],
