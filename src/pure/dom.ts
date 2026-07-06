@@ -30,3 +30,10 @@ export function getVisibleElements(
     return isInViewport
   })
 }
+
+const selectObserve =
+  (selectors: string, observeOption: MutationObserverInit) =>
+  (observer: MutationObserver) => {
+    const target = document.querySelector(selectors)
+    if (target) observer.observe(target, observeOption)
+  }

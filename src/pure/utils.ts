@@ -1,3 +1,5 @@
+export const insertMany = <K, V>(map: Map<K, V>) => {}
+
 export const entriesMap = <V>(obj: { [key: string | number | symbol]: V }) =>
   new Map(Object.entries(obj))
 
