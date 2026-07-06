@@ -4,34 +4,42 @@ import { getLinkMainPage, getLinkOnFgBgPage } from "./features/dlt-dom"
 import { DLT_HISTORY_KEY } from "./features/dlt-storage"
 
 function showCommandPalette() {
-  // 1. 重複作成を防ぐ
   if (document.getElementById("ac-palette")) return
 
-  // 2. オーバーレイ要素を作成
   const container = document.createElement("div")
   container.id = "ac-palette"
   container.style.cssText = `
     position: fixed; top: 20%; left: 50%; transform: translateX(-50%);
-    z-index: 999999; background: white; padding: 20px; border-radius: 8px;
-    box-shadow: 0 4px 15px rgba(0,0,0,0.3);
+    z-index: 21000000; background: #2c3e50; padding: 20px; border-radius: 8px;
+    box-shadow: 0 4px 15px rgba(0,0,0,0.5); border: 2px solid #3498db;
   `
 
-  // 3. 入力欄を作成
   const input = document.createElement("input")
   input.placeholder = "コマンドを入力..."
+  input.style.cssText = `
+    background: #1a252f; border: 1px solid #3498db; color: white;
+    padding: 6px 12px; border-radius: 4px; outline: none; width: 300px; font-family: monospace;
+  `
 
-  // 4. Enterキーで処理を実行
-  input.addEventListener("keydown", e => {
-    if (e.key === "Escape") {
-      e.preventDefault()
-      e.stopPropagation()
-      container.remove()
-    }
-    if (e.key === "Enter") {
-      executeCommand(input.value)
-      container.remove() // 処理後に消去
-    }
-  })
+  // 👈 ここ！keydown イベントのインターセプトを最強にする
+  input.addEventListener(
+    "keydown",
+    e => {
+      if (e.key === "Escape") {
+        e.preventDefault()
+        e.stopImmediatePropagation() // 👈 他のすべてのリスナーへの伝播を即座に完全停止
+        container.remove()
+        return
+      }
+      if (e.key === "Enter") {
+        e.preventDefault()
+        e.stopImmediatePropagation()
+        executeCommand(input.value)
+        container.remove()
+      }
+    },
+    true,
+  ) // 👈 キャプチャフェーズ(true)に設定することで、最優先でEscをフックする
 
   container.appendChild(input)
   document.body.appendChild(container)
@@ -40,12 +48,23 @@ function showCommandPalette() {
 
 function executeCommand(val: string) {
   console.log("実行するコマンド:", val)
-  // ここにACtl.setClipboard等を使ったロジックを分岐させる
 
   switch (val) {
     case "hello":
       console.log("hello, world!")
       break
+
+    case "g": {
+      if (window.location.hostname !== "dlt.kitetu.com") return
+      const params = new URLSearchParams(window.location.search)
+      const links =
+        params.has("fg") || params.has("bg")
+          ? getLinkOnFgBgPage()()
+          : getLinkMainPage()()
+
+      console.log("links", links)
+      break
+    }
 
     case "f": {
       if (window.location.hostname !== "dlt.kitetu.com") return

@@ -1,5 +1,6 @@
 import { linkSync } from "node:fs"
 import { IdTitleMap, PostLink, removeDuplicateOrEmpty } from "./dlt-storage"
+import { dbg } from "@/pure/utils"
 
 const DLT_MY_ID = "7779"
 
@@ -21,7 +22,7 @@ const getLink = ({ type, el }: GetLinkElement): PostLink[] => {
 
     return id && title ? [{ id, title }] : []
   } else {
-    const id = el?.getAttribute("href")?.split("KNO.")[1]
+    const id = el?.getAttribute("href")?.split("KNo.")[1]
     const title = el?.getAttribute("data-src")
     return id && title ? [{ id, title }] : []
   }
@@ -34,7 +35,7 @@ type GetLinkTarget = GetLinkTargetMainPage | "opening" | "openingOtherSide"
 export const getLinkMainPage =
   (option = { limitOwn: true } as GetLinkOption) =>
   (targets = ["list", "listsFg"] as GetLinkTarget[]) => {
-    const links: IdTitleMap = new Map()
+    console.log("getLinkMainPage", option, targets)
 
     if (targets.includes("list")) {
       const links: PostLink[] = Array.from(
@@ -47,11 +48,13 @@ export const getLinkMainPage =
           fgbg = [
             ...fgbg,
             ...Array.from(
-              el
-                .closest(".bln")
-                ?.querySelectorAll(
-                  `:scope > .oln.ikon${option.limitOwn ? ".I" : ""} > a.knm`,
-                ) || [],
+              dbg(
+                el
+                  .closest(".bln")
+                  ?.querySelectorAll(
+                    `:scope > .oln.ikon${option.limitOwn ? ".I" : ""} > a.knm`,
+                  ) || [],
+              ),
             ).flatMap(el => getLink({ type: "fg/bg", el })),
           ]
         }
@@ -59,8 +62,10 @@ export const getLinkMainPage =
           fgbg = [
             ...fgbg,
             ...Array.from(
-              el.querySelectorAll(
-                `:scope > .bg > .oln${option.limitOwn ? ".I" : ""} > a.knm`,
+              dbg(
+                el.querySelectorAll(
+                  `:scope > .bg > .oln${option.limitOwn ? ".I" : ""} > a.knm`,
+                ),
               ),
             ).flatMap(el => getLink({ type: "fg/bg", el })),
           ]
@@ -79,6 +84,8 @@ export const getLinkMainPage =
 export const getLinkOnFgBgPage =
   (option = { limitOwn: true } as GetLinkOption) =>
   (targets = ["opening", "list", "listsFg", "listsBg"] as GetLinkTarget[]) => {
+    console.log("getLinkOnFgBgPage", option, targets)
+
     let links: PostLink[] = []
 
     if (targets.includes("opening")) {

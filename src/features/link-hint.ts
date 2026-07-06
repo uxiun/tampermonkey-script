@@ -88,7 +88,7 @@ export function linkHint<S>(hintMap: HintMap<S>, state: S): void {
   // リスナーは常に「この階層（ターン）で唯一つだけ」登録
   const keyListener = (e: KeyboardEvent) => {
     e.preventDefault()
-    e.stopPropagation()
+    e.stopImmediatePropagation()
 
     if (e.key === "Escape") {
       cleanup()

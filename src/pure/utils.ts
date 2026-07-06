@@ -1,4 +1,7 @@
-export const insertMany = <K, V>(map: Map<K, V>) => {}
+export function dbg<T>(e: T) {
+  console.log(e)
+  return e
+}
 
 export const entriesMap = <V>(obj: { [key: string | number | symbol]: V }) =>
   new Map(Object.entries(obj))

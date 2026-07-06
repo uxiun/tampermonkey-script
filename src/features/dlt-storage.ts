@@ -6,6 +6,12 @@ export interface PostLink {
   title: string
 }
 
+export const postLinkText = (postLink: PostLink) =>
+  `{${postLink.title} K#${postLink.id}}`
+
+export const postLinkTextList = (links: PostLink[]) =>
+  links.map(postLinkText).join("")
+
 export type IdTitleMap = Map<string, string>
 
 export const removeDuplicateOrEmpty = (links: PostLink[]) =>
