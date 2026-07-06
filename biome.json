@@ -1,0 +1,24 @@
+{
+  "files": {
+    "includes": ["**", "!**/components/ui/*"]
+  },
+  "linter": {
+    "rules": {
+      "correctness": {
+        "useExhaustiveDependencies": "info"
+      },
+      "suspicious": {
+        "useIterableCallbackReturn": "warn"
+      }
+    }
+  },
+  "formatter": {
+    "indentStyle": "space"
+  },
+  "javascript": {
+    "formatter": {
+      "arrowParentheses": "asNeeded",
+      "semicolons": "asNeeded"
+    }
+  }
+}

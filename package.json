@@ -1,0 +1,20 @@
+{
+  "name": "autocontrol-script",
+  "version": "1.0.0",
+  "description": "",
+  "scripts": {
+    "build": "node build.js",
+    "watch": "node build.js --watch"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "packageManager": "pnpm@10.25.0",
+  "devDependencies": {
+    "@types/node": "^26.1.0",
+    "dotenv": "^17.4.2",
+    "esbuild": "^0.28.1",
+    "esbuild-plugin-tsconfig-paths": "^1.0.2",
+    "typescript": "^6.0.3"
+  }
+}

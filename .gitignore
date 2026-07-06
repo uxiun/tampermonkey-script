@@ -1,0 +1,16 @@
+node_modules/
+.vscode/
+
+# esbuildの出力先フォルダ（成果物なのでソースコード管理からは外す）
+dist/
+
+# ログファイル
+*.log
+npm-debug.log*
+
+# 環境変数（個人情報やトークンを入れる場合）
+.env
+.env.local
+
+
+outdated/
