@@ -1,7 +1,10 @@
 // src/commandPalette.ts
 
 import { getLinkMainPage, getLinkOnFgBgPage } from "./features/dlt-dom"
-import { DLT_HISTORY_KEY } from "./features/dlt-storage"
+import {
+  DLT_HISTORY_KEY,
+  getHistoryFromLocalStorage,
+} from "./features/dlt-storage"
 
 function showCommandPalette() {
   if (document.getElementById("ac-palette")) return
@@ -68,7 +71,7 @@ function executeCommand(val: string) {
 
     case "f": {
       if (window.location.hostname !== "dlt.kitetu.com") return
-      const history = JSON.parse(localStorage.getItem(DLT_HISTORY_KEY) || "[]")
+      const history = getHistoryFromLocalStorage()
       const params = new URLSearchParams(window.location.search)
       const links =
         params.has("fg") || params.has("bg")

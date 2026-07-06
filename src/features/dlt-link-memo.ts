@@ -116,16 +116,41 @@ export function startLinkMemo() {
 
         if (e.key === "ArrowDown") {
           e.preventDefault()
-          state.cursorIndex = Math.min(
-            state.cursorIndex + 1,
-            currentItems.length - 1,
-          )
+
+          if (state.cursorIndex < currentItems.length - 1) {
+            // ページ内で下に動く
+            state.cursorIndex++
+          } else {
+            // ページの最末尾に達したとき
+            if (state.currentPage < maxPage - 1) {
+              state.currentPage++
+              state.cursorIndex = 0 // 次のページの先頭へ
+            } else {
+              state.currentPage = 0 // 最終ページの最後なら、最初のページの最初へワープ！
+              state.cursorIndex = 0
+            }
+          }
+
           renderWidget(state)
           return
         }
         if (e.key === "ArrowUp") {
           e.preventDefault()
-          state.cursorIndex = Math.max(state.cursorIndex - 1, 0)
+          if (state.cursorIndex > 0) {
+            // ページ内で上に動く
+            state.cursorIndex--
+          } else {
+            // ページの先頭に達したとき
+            if (state.currentPage > 0) {
+              state.currentPage--
+              // 前のページの最後のインデックス（10件切り出しなので、デクリメント後の要素数 - 1）
+              state.cursorIndex = getPagedItems(state).length - 1
+            } else {
+              // 最初のページの最初なら、最終ページの最後へワープ！
+              state.currentPage = maxPage - 1
+              state.cursorIndex = getPagedItems(state).length - 1
+            }
+          }
           renderWidget(state)
           return
         }
@@ -206,13 +231,36 @@ export function startLinkMemo() {
 
       switch (e.key) {
         case "ArrowDown":
-          state.cursorIndex = Math.min(
-            state.cursorIndex + 1,
-            currentItems.length - 1,
-          )
+          if (state.cursorIndex < currentItems.length - 1) {
+            // ページ内で下に動く
+            state.cursorIndex++
+          } else {
+            // ページの最末尾に達したとき
+            if (state.currentPage < maxPage - 1) {
+              state.currentPage++
+              state.cursorIndex = 0 // 次のページの先頭へ
+            } else {
+              state.currentPage = 0 // 最終ページの最後なら、最初のページの最初へワープ！
+              state.cursorIndex = 0
+            }
+          }
           break
         case "ArrowUp":
-          state.cursorIndex = Math.max(state.cursorIndex - 1, 0)
+          if (state.cursorIndex > 0) {
+            // ページ内で上に動く
+            state.cursorIndex--
+          } else {
+            // ページの先頭に達したとき
+            if (state.currentPage > 0) {
+              state.currentPage--
+              // 前のページの最後のインデックス（10件切り出しなので、デクリメント後の要素数 - 1）
+              state.cursorIndex = getPagedItems(state).length - 1
+            } else {
+              // 最初のページの最初なら、最終ページの最後へワープ！
+              state.currentPage = maxPage - 1
+              state.cursorIndex = getPagedItems(state).length - 1
+            }
+          }
           break
         case "ArrowRight":
           if (state.currentPage < maxPage - 1) {
