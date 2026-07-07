@@ -1,8 +1,12 @@
 import {
+  DLT_DOCK_KEY,
   DLT_HISTORY_KEY,
   getHistoryFromLocalStorage,
+  getLinksFromLocalStorage,
+  mergeLinksStorage,
   PostLink,
   postLinkText,
+  searchLinks,
 } from "./dlt-storage"
 
 type IMEOption = {
@@ -43,43 +47,48 @@ function syncLocalStorage(state: IMEState) {
 
 // キーワード群によるAND包含検索 ＆ スコアリングロジック
 function searchHistoryFast(option: IMEOption, state: IMEState) {
-  const keywords = state.query.split(/\s+/).filter(Boolean)
-  if (keywords.length === 0) return []
+  return searchLinks(state.query, state.history).slice(
+    0,
+    option.suggestionNumbers,
+  )
 
-  const results: { link: PostLink; score: number }[] = []
+  // const keywords = state.query.split(/\s+/).filter(Boolean)
+  // if (keywords.length === 0) return []
 
-  for (const link of state.history) {
-    const titleLower = link.title.toLowerCase()
+  // const results: { link: PostLink; score: number }[] = []
 
-    let isMatch = true
-    let totalScore = 0
+  // for (const link of state.history) {
+  //   const titleLower = link.title.toLowerCase()
 
-    for (let j = 0; j < keywords.length; j++) {
-      const kw = keywords[j].toLowerCase()
-      const idx = titleLower.indexOf(kw)
+  //   let isMatch = true
+  //   let totalScore = 0
 
-      if (idx === -1) {
-        isMatch = false
-        break
-      }
+  //   for (let j = 0; j < keywords.length; j++) {
+  //     const kw = keywords[j].toLowerCase()
+  //     const idx = titleLower.indexOf(kw)
 
-      // 【スコアリング・アルゴリズム】
-      let kwScore = Math.max(0, 100 - idx)
-      if (titleLower === kw) kwScore += 500
-      if (idx === 0 || titleLower.charAt(idx - 1) === " ") kwScore += 50
+  //     if (idx === -1) {
+  //       isMatch = false
+  //       break
+  //     }
 
-      totalScore += kwScore
-    }
+  //     // 【スコアリング・アルゴリズム】
+  //     let kwScore = Math.max(0, 100 - idx)
+  //     if (titleLower === kw) kwScore += 500
+  //     if (idx === 0 || titleLower.charAt(idx - 1) === " ") kwScore += 50
 
-    if (isMatch) {
-      results.push({ link, score: totalScore })
-    }
-  }
+  //     totalScore += kwScore
+  //   }
 
-  return results
-    .sort((a, b) => b.score - a.score)
-    .map(r => r.link)
-    .slice(0, option.suggestionNumbers)
+  //   if (isMatch) {
+  //     results.push({ link, score: totalScore })
+  //   }
+  // }
+
+  // return results
+  //   .sort((a, b) => b.score - a.score)
+  //   .map(r => r.link)
+  //   .slice(0, option.suggestionNumbers)
 }
 
 function runSearch(option: IMEOption, state: IMEState) {
@@ -104,7 +113,12 @@ function renderWidget(state: IMEState, inlinePopup: InlineSuggestPopup) {
   }
 
   const coords = getPopupPosition(state.target, state.startPos)
-  inlinePopup.show(coords, state.candidates, state.selectedIndex)
+  inlinePopup.show(
+    coords,
+    state.candidates,
+    state.selectedIndex,
+    state.candidates.length,
+  )
 }
 
 export function dltIME(option = defaultIMEOption) {
@@ -250,6 +264,12 @@ export function dltIME(option = defaultIMEOption) {
 
           imeState.isActive = false
           inlinePopup.hide()
+
+          const result = mergeLinksStorage(DLT_DOCK_KEY, [selected])
+          const links = getLinksFromLocalStorage(DLT_DOCK_KEY)
+          window.dispatchEvent(
+            new CustomEvent("dlt-dock-updated", { detail: links }),
+          )
         }
         return
       }
@@ -283,7 +303,7 @@ class InlineSuggestPopup {
       boxShadow: "0 4px 12px rgba(0,0,0,0.5)",
       padding: "4px",
       display: "none",
-      maxHeight: "200px",
+      // maxHeight: "200px",
       overflowY: "auto",
       fontFamily: "monospace",
       fontSize: "12px",
@@ -295,14 +315,22 @@ class InlineSuggestPopup {
     coords: { top: number; left: number },
     candidates: any[],
     selectedIndex: number,
+    optionNumbers: number,
   ) {
     if (candidates.length === 0) {
       this.hide()
       return
     }
-    this.el.style.top = `${coords.top}px`
-    this.el.style.left = `${coords.left}px`
-    this.el.style.display = "block"
+    // 1件あたり約26px (padding 4px*2 + line-height等) として計算
+    // 最大件数に応じた高さを設定しつつ、画面全体の45%（45vh）を超えないように制限して見切れを防ぐ
+    const estimatedHeight = optionNumbers * 26 + 8
+    this.el.style.maxHeight = `style` in this.el ? `style` : "" // 型エラー防止のダミー
+    Object.assign(this.el.style, {
+      top: `${coords.top}px`,
+      left: `${coords.left}px`,
+      display: "block",
+      maxHeight: `min(${estimatedHeight}px, 45vh)`, // 縦幅を動的かつ安全に制限
+    })
 
     this.el.innerHTML = candidates
       .map((cand, idx) => {

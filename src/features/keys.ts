@@ -12,7 +12,11 @@ export const KEYS = {
 }
 
 const vimiumcKeys = {
-  dlt: "fgjk.",
+  dlt: "fgjk.m",
+}
+
+const autocontrolKeys = {
+  dlt: "v",
 }
 
 export const keyBlacklist =
@@ -21,7 +25,8 @@ export const keyBlacklist =
   }
 
 export const dltkeys = {
-  easy: keyBlacklist(vimiumcKeys.dlt)("easiest"),
+  // easy: KEYS.easiest,
+  easy: keyBlacklist(vimiumcKeys.dlt + autocontrolKeys.dlt)("easiest"),
   easyL: keyBlacklist(vimiumcKeys.dlt + KEYS.r)("easiest"),
   easyR: keyBlacklist(vimiumcKeys.dlt + KEYS.l)("easiest"),
 }

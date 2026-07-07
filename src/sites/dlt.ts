@@ -5,5 +5,5 @@ import { watchDltPage } from "@/features/dlt-mutation"
 export default function runDlt() {
   startLinkMemo()
   watchDltPage()
-  dltIME()
+  dltIME({ suggestionNumbers: 10 })
 }

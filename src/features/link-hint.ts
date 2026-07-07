@@ -71,6 +71,7 @@ export function linkHint<S>(hintMap: HintMap<S>, state: S): void {
     document.querySelectorAll(".my-ac-hint-label").forEach(el => el.remove())
   }
   removeLabels()
+  ;(window as any).__dlt_link_hint_active__ = true
 
   // 画面上のすべてのターゲット要素を一つのフラットな配列に集約する
   const activeHints: {

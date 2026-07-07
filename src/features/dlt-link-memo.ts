@@ -3,9 +3,11 @@ import {
   collectAndMergeLinks,
   DLT_DOCK_KEY,
   DLT_HISTORY_KEY,
+  mergeLinksStorage,
   PostLink,
   postLinkText,
   postLinkTextList,
+  searchLinks,
 } from "./dlt-storage"
 import { dltkeys } from "./keys"
 import { HintMap, linkHint } from "./link-hint"
@@ -46,17 +48,22 @@ export function startLinkMemo() {
   // 1. 【自動収集】ページが開かれた／更新された瞬間、画面内の投稿を全部さらって自動収集
   // (要素の取得セレクターはあなたのサイトの環境に合わせて調整してください)
   const scrapedLinks: PostLink[] = getAllMyLinkFromPage()
-  console.log("scrapedLinks", scrapedLinks)
-  const beforeCount = (
-    JSON.parse(localStorage.getItem(DLT_HISTORY_KEY) || "[]") as PostLink[]
-  ).length
+
+  // const beforeCount = (
+  //   JSON.parse(localStorage.getItem(DLT_HISTORY_KEY) || "[]") as PostLink[]
+  // ).length
 
   // 💡 履歴をマージして更新
-  collectAndMergeLinks(scrapedLinks)
+  // collectAndMergeLinks(scrapedLinks)
+  const mergeResult = mergeLinksStorage(DLT_HISTORY_KEY, scrapedLinks)
+  console.log("リンク収集結果:")
+  console.log("新規:", mergeResult.inserted)
+  console.log("更新:", mergeResult.updated)
+  console.log("移動:", mergeResult.moved)
 
   // 2. 更新された最新の履歴を globalState に同期して描画
   syncLocalStorage(globalState)
-  globalState.lastAddedCount = globalState.history.length - beforeCount
+  globalState.lastAddedCount = mergeResult.inserted.length
 
   // 💡【重要】リロード対策：左の台（leftDock）の状態も localStorage から復元する！
   globalState.leftDock = JSON.parse(localStorage.getItem(DLT_DOCK_KEY) || "[]")
@@ -109,6 +116,10 @@ export function startLinkMemo() {
   window.addEventListener(
     "keydown",
     async (e: KeyboardEvent) => {
+      // 💡【追加】出荷ロジック等から擬似的に発行されたプログラムイベント(isTrusted=false)は、
+      // 小窓のショートカット操作と衝突するため、完全に無視してブラウザ標準（input要素）へ流す。
+      if (!e.isTrusted) return
+
       // 【超重要】リンクヒントモード（自動リンク）が動いている間は、このメモ小窓の全ショトカを完全スルー
       if ((window as any).__dlt_link_hint_active__) return
 
@@ -234,6 +245,19 @@ export function startLinkMemo() {
         //   }
         //   return
         // }
+        if (e.key === " " && state.searchQuery === "") {
+          state.searchQuery = ""
+          handleSearch("", state)
+          renderWidget(state)
+          const input = document.getElementById(
+            "dlt-search-input",
+          ) as HTMLInputElement
+          if (input) {
+            input.value = ""
+            input.focus()
+          }
+          executeLinkOperation(state.leftDock)
+        }
         if (e.key === "Backspace" && state.searchQuery === "") {
           state.leftDock = []
           localStorage.setItem(DLT_DOCK_KEY, JSON.stringify(state.leftDock))
@@ -367,8 +391,8 @@ export function startLinkMemo() {
           break
         case " ":
           executeLinkOperation(state.leftDock)
-          state.leftDock = []
-          state.isWidgetActive = false
+          // state.leftDock = []
+          // state.isWidgetActive = false
           break
         case "Tab":
           await executeCopy(state.leftDock.reverse())
@@ -391,14 +415,12 @@ const getPagedItems = (state: AppState) => {
 }
 
 function handleSearch(query: string, state: AppState) {
-  state.searchQuery = query
+  state.searchQuery = query.trim()
   if (!query) {
     state.searchResults = [...state.history]
     return
   }
-  state.searchResults = state.history.filter(p =>
-    p.title.toLowerCase().includes(query.toLowerCase()),
-  )
+  state.searchResults = searchLinks(state.searchQuery, state.history)
 }
 
 export function renderWidget(state: AppState) {
@@ -606,6 +628,7 @@ function executeLinkOperation(links: PostLink[]) {
                   if (!input) return
                   input.classList.add("shw")
                   input.value = postLinkTextList(links)
+                  console.log("input.value =", input.value)
                   // 5. Enterキーのイベントを作成して送り込む
                   const enterEvent = new KeyboardEvent("keydown", {
                     key: "Enter",
@@ -618,11 +641,12 @@ function executeLinkOperation(links: PostLink[]) {
 
                   input.dispatchEvent(enterEvent)
                   // ;(window as any).__dlt_link_hint_active__ = false
-                  globalState.leftDock = []
-                  localStorage.setItem(
-                    DLT_DOCK_KEY,
-                    JSON.stringify(globalState.leftDock),
-                  )
+
+                  // globalState.leftDock = []
+                  // localStorage.setItem(
+                  //   DLT_DOCK_KEY,
+                  //   JSON.stringify(globalState.leftDock),
+                  // )
                 },
               },
             ],
