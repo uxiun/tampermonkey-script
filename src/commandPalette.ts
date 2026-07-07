@@ -2,6 +2,7 @@
 
 import { getLinkMainPage, getLinkOnFgBgPage } from "./features/dlt-dom"
 import {
+  collectAndMergeLinks,
   DLT_HISTORY_KEY,
   getHistoryFromLocalStorage,
 } from "./features/dlt-storage"
@@ -78,11 +79,9 @@ function executeCommand(val: string) {
           ? getLinkOnFgBgPage()()
           : getLinkMainPage()()
 
-      console.log("links", links)
-      localStorage.setItem(
-        DLT_HISTORY_KEY,
-        JSON.stringify([...links, ...history]),
-      )
+      collectAndMergeLinks(links)
+
+      window.dispatchEvent(new CustomEvent("dlt-history-updated"))
       break
     }
   }

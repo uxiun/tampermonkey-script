@@ -115,8 +115,6 @@ export const getLinkMainPage =
 export const getLinkOnFgBgPage =
   (option = { limitOwn: true } as GetLinkOption) =>
   (targets = ["opening", "list", "listsFg", "listsBg"] as GetLinkTarget[]) => {
-    console.log("getLinkOnFgBgPage", option, targets)
-
     let links: PostLink[] = []
 
     if (targets.includes("opening")) {

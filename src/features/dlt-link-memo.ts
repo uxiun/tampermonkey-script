@@ -4,6 +4,7 @@ import {
   DLT_DOCK_KEY,
   DLT_HISTORY_KEY,
   PostLink,
+  postLinkText,
   postLinkTextList,
 } from "./dlt-storage"
 import { dltkeys } from "./keys"
@@ -98,9 +99,16 @@ export function startLinkMemo() {
     }
   })
 
+  window.addEventListener("dlt-history-updated", () => {
+    syncLocalStorage(globalState)
+    if (globalState.isWidgetActive) {
+      renderWidget(globalState) // 即座に描画更新！
+    }
+  })
+
   window.addEventListener(
     "keydown",
-    (e: KeyboardEvent) => {
+    async (e: KeyboardEvent) => {
       // 【超重要】リンクヒントモード（自動リンク）が動いている間は、このメモ小窓の全ショトカを完全スルー
       if ((window as any).__dlt_link_hint_active__) return
 
@@ -259,6 +267,12 @@ export function startLinkMemo() {
           return
         }
 
+        if (e.key === "Tab") {
+          await executeCopy(state.leftDock.reverse())
+          state.leftDock = []
+          state.isWidgetActive = false
+        }
+
         // 通常の文字入力はブラウザ標準にパスする
         return
       }
@@ -353,6 +367,11 @@ export function startLinkMemo() {
           break
         case " ":
           executeLinkOperation(state.leftDock)
+          state.leftDock = []
+          state.isWidgetActive = false
+          break
+        case "Tab":
+          await executeCopy(state.leftDock.reverse())
           state.leftDock = []
           state.isWidgetActive = false
           break
@@ -537,6 +556,13 @@ export function renderWidget(state: AppState) {
   }
 }
 
+async function executeCopy(links: PostLink[]) {
+  for (const link of links) {
+    const s = postLinkText(link)
+    await ACtl.setClipboard(s)
+  }
+}
+
 function executeLinkOperation(links: PostLink[]) {
   console.log("🚚 出荷実行!! リンク数:", links.length, links)
 
@@ -591,8 +617,12 @@ function executeLinkOperation(links: PostLink[]) {
                   })
 
                   input.dispatchEvent(enterEvent)
-
                   // ;(window as any).__dlt_link_hint_active__ = false
+                  globalState.leftDock = []
+                  localStorage.setItem(
+                    DLT_DOCK_KEY,
+                    JSON.stringify(globalState.leftDock),
+                  )
                 },
               },
             ],

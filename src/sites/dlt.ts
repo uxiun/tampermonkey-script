@@ -1,6 +1,7 @@
 import { startLinkMemo } from "@/features/dlt-link-memo"
+import { watchDltPage } from "@/features/dlt-mutation"
 
-export default function watchDlt() {
-  console.log("watching on dlt.kitetu.com")
+export default function runDlt() {
   startLinkMemo()
+  watchDltPage()
 }

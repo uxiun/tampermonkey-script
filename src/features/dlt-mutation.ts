@@ -1,3 +1,48 @@
+import { getAllMyLinkFromPage } from "./dlt-dom"
+import { collectAndMergeLinks } from "./dlt-storage"
+
+export function watchDltPage() {
+  console.log("watching dlt.kitetu.com")
+
+  if ((window as any).__dlt_watching__) return
+  ;(window as any).__dlt_watching__ = true
+  document.addEventListener(
+    "keydown",
+    e => {
+      // IME
+      if (e.isComposing) return
+
+      // Ctrlキー（またはMacのCmdキー）とEnterキーが同時に押されたか判定
+      const isCtrlOrCmd = e.ctrlKey || e.metaKey
+      const isEnter = e.key === "Enter" || e.keyCode === 13
+
+      if (isEnter) {
+        if (
+          isCtrlOrCmd &&
+          (document.activeElement?.matches("#drw input") ||
+            document.activeElement?.matches("#drw textarea"))
+        ) {
+          console.log("新規投稿")
+          setTimeout(() => {
+            collectAndMergeLinks(getAllMyLinkFromPage())
+            window.dispatchEvent(new CustomEvent("dlt-history-updated"))
+          }, 500)
+          return
+        }
+
+        if (document.activeElement?.matches("input#kw")) {
+          console.log("全知検索")
+          setTimeout(() => {
+            collectAndMergeLinks(getAllMyLinkFromPage())
+            window.dispatchEvent(new CustomEvent("dlt-history-updated"))
+          }, 300)
+        }
+      }
+    },
+    { capture: true },
+  ) // ←ここが重要：サイト側の処理より先に実行する
+}
+
 function tryMutation() {
   const states = {
     focusSearch:
