@@ -1,5 +1,8 @@
+import { removePrefix } from "@/pure/utils"
+
 export const DLT_HISTORY_KEY = "dlt-history"
 export const DLT_DOCK_KEY = "dlt-dock"
+export const DLT_MY_ID = "7779"
 
 // localStorageに保存するデータ型
 export interface PostLink {
@@ -8,7 +11,7 @@ export interface PostLink {
 }
 
 export const postLinkText = (postLink: PostLink) =>
-  `{${postLink.title} K#${postLink.id}}`
+  `{${postLink.title} K#${removePrefix(DLT_MY_ID, postLink.id)}}`
 
 export const postLinkTextList = (links: PostLink[]) =>
   links.map(postLinkText).join("")

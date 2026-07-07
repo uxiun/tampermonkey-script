@@ -1,8 +1,11 @@
 import { linkSync } from "node:fs"
-import { IdTitleMap, PostLink, removeDuplicateOrEmpty } from "./dlt-storage"
+import {
+  DLT_MY_ID,
+  IdTitleMap,
+  PostLink,
+  removeDuplicateOrEmpty,
+} from "./dlt-storage"
 import { dbg } from "@/pure/utils"
-
-const DLT_MY_ID = "7779"
 
 type GetLinkOption = {
   limitOwn: boolean

@@ -1,3 +1,6 @@
+export const removePrefix = (prefix: string, text: string) =>
+  text.startsWith(prefix) ? text.slice(prefix.length) : text
+
 export function isPromise(value: any) {
   return (
     value !== null &&
