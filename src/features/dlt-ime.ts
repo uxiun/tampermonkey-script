@@ -64,11 +64,8 @@ function searchHistoryFast(option: IMEOption, state: IMEState) {
       }
 
       // 【スコアリング・アルゴリズム】
-      // 1. タイトルの先頭に近いほど高スコア (最大100点から減算)
       let kwScore = Math.max(0, 100 - idx)
-      // 2. キーワードがタイトルと完全一致する場合は特大ボーナス
       if (titleLower === kw) kwScore += 500
-      // 3. キーワードが単語の区切り（前方一致など）に一致する場合のボーナス
       if (idx === 0 || titleLower.charAt(idx - 1) === " ") kwScore += 50
 
       totalScore += kwScore
@@ -79,7 +76,6 @@ function searchHistoryFast(option: IMEOption, state: IMEState) {
     }
   }
 
-  // スコアの高い順にソートして、指定件数を切り出す
   return results
     .sort((a, b) => b.score - a.score)
     .map(r => r.link)
@@ -108,11 +104,10 @@ function renderWidget(state: IMEState, inlinePopup: InlineSuggestPopup) {
   }
 
   const coords = getPopupPosition(state.target, state.startPos)
-  inlinePopup.show(coords, state.candidates, state.selectedIndex) // imeState ではなく引数の state から描画するよう修正
+  inlinePopup.show(coords, state.candidates, state.selectedIndex)
 }
 
 export function dltIME(option = defaultIMEOption) {
-  // フラグで一度だけ登録することを保証
   if ((window as any).__dlt_ime__) return
   ;(window as any).__dlt_ime__ = true
 
@@ -123,25 +118,29 @@ export function dltIME(option = defaultIMEOption) {
   // 初回起動時にローカルストレージから履歴キャッシュを読み込む
   syncLocalStorage(imeState)
 
-  window.addEventListener("dlt-history-updated", () => {
-    console.log("IME refresh with updatedHistory")
-    syncLocalStorage(imeState)
-    imeState = runSearch(option, imeState)
-    renderWidget(imeState, inlinePopup)
-  })
-
-  window.addEventListener("storage", e => {
-    if (e.key === DLT_HISTORY_KEY) {
-      console.log("IME refresh with updated storage")
+  // 外部イベントで履歴が同期された際のハンドラー（現在の検索状態を維持したまま再検索）
+  const handleExternalRefresh = () => {
+    if (!imeState.isActive || !imeState.target) {
       syncLocalStorage(imeState)
-      imeState = runSearch(option, imeState)
-      renderWidget(imeState, inlinePopup)
+      return
     }
+    const prevSelectedIndex = imeState.selectedIndex
+    syncLocalStorage(imeState)
+    imeState = {
+      ...runSearch(option, imeState),
+      selectedIndex: prevSelectedIndex, // 外部更新時は選択インデックスを維持する
+    }
+    renderWidget(imeState, inlinePopup)
+  }
+
+  window.addEventListener("dlt-history-updated", handleExternalRefresh)
+  window.addEventListener("storage", e => {
+    if (e.key === DLT_HISTORY_KEY) handleExternalRefresh()
   })
 
-  // 共通の入力/状態更新ロジック
-  function handleImeLookup(state: IMEState) {
-    const target = state.target
+  // 共通の入力/状態更新ロジック（タイピング時専用）
+  function handleImeLookup(isTyping: boolean) {
+    const target = imeState.target
     if (!target) return
     const context = getInlineImeContext(target)
     if (!context) {
@@ -150,31 +149,32 @@ export function dltIME(option = defaultIMEOption) {
       return
     }
 
-    // グローバルな imeState のクエリと座標情報を更新
     imeState.query = context.query
     imeState.startPos = context.startPos
     imeState.endPos = context.endPos
 
-    // 検索を走らせて状態をマージ
+    const searchResult = runSearch(option, imeState)
+
     imeState = {
-      ...runSearch(option, imeState),
-      selectedIndex: -1, // 新しい入力があったら選択状態はリセット
+      ...searchResult,
+      // タイピングによる新しい文字入力があった時だけ、選択を -1 にリセットする
+      selectedIndex: isTyping ? -1 : imeState.selectedIndex,
     }
 
-    // 常に最新化されたグローバルの imeState で描画命令を出す
     renderWidget(imeState, inlinePopup)
   }
 
-  // 2. キャレット位置移動の監視（矢印キー移動、マウス選択などでの範囲外脱出チェック）
+  // 2. キャレット位置移動の監視
   const checkCaretBoundary = (e: Event) => {
     if (!imeState.isActive) return
     const target = e.target as HTMLTextAreaElement | HTMLInputElement
     if (!target || !target.matches("textarea.src")) return
 
+    // Tabキーのキーアップ時は境界チェックや再評価をスキップ（選択状態を守る）
+    if (e instanceof KeyboardEvent && e.key === "Tab") return
+
     const currentCaret = target.selectionStart ?? 0
 
-    // 現在のキャレットが `{` の左側、あるいは `}` より右側にいってしまった場合
-    // または、文字選択などで選択幅（Range）が発生した場合は即座に閉じる
     if (
       currentCaret <= imeState.startPos ||
       currentCaret > imeState.endPos ||
@@ -185,8 +185,8 @@ export function dltIME(option = defaultIMEOption) {
       return
     }
 
-    // 範囲内であれば、クエリの再評価を行ってサジェストを随時更新
-    handleImeLookup(imeState)
+    // カーソル移動やクリックによる評価時は、タイピングではないので選択状態をリセットしない
+    handleImeLookup(false)
   }
 
   window.addEventListener("keyup", checkCaretBoundary, true)
@@ -199,7 +199,7 @@ export function dltIME(option = defaultIMEOption) {
       const target = e.target as Element
       if (!target || !target.matches("textarea.src")) return
       imeState.target = target as HTMLTextAreaElement
-      handleImeLookup(imeState)
+      handleImeLookup(true) // タイピング中フラグをON
     },
     true,
   )
