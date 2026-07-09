@@ -18,13 +18,6 @@ declare namespace ACtl {
     returnType: "array",
   ): Promise<string[]>
 
-  // 実装の実体（TypeScriptのコンパイラ用。呼び出し元からは隠蔽されます）
-  function expand(
-    template: string,
-    tabSpec?: TabSpec,
-    returnType?: "string" | "array",
-  ): Promise<string | string[]>
-
   function getTabInfo(tabSpec: string): Promise<{ [tabId: number]: TabInfo }>
 
   //openURL-----------------------------------------------------------------------------------------
@@ -128,4 +121,80 @@ declare namespace ACtl {
     | FilterObject // Filter Object
     | TabSpec[] // Array of TabSpec
   //--------------------------------------------------------------------------------------
+
+  /**
+   * 指定された場所からファイルを取得し、指定された形式で返します。
+   * @param fileLocation URL、データURI、ローカルパス、またはUNCパス。`<desktop>` などのプレースホルダーを含めることができます。
+   * @param returnType ファイルコンテンツの返し方（デフォルトは 'text'）
+   * @throws {string} ファイルにアクセスできない場合、または指定された型に解釈できない場合のエラー説明。
+   */
+  function getFile<T extends ACtlGetFileReturnType = "text">(
+    fileLocation: string,
+    returnType?: T,
+  ): Promise<ACtlGetFileReturnTypeMap[T]>
+
+  /**
+   * 指定したファイルパスにコンテンツを保存します。
+   * * @param filePath 保存先ファイルのローカルパスまたはUNCパス。`<desktop>` などのプレースホルダーが使用可能。
+   * @param content 保存するコンテンツ（文字列、Blob、Canvas、各種DOM要素、オブジェクトなど）。
+   * @param options 保存時のオプション（追加書き込み、エンコーディング、画像クオリティなど）。
+   * @returns 実際に保存されたファイルの絶対パスを返す Promise。
+   */
+  function saveFile(
+    filePath: string,
+    content: ACtlSaveFileContent,
+    options?: ACtlSaveFileOptions,
+  ): Promise<string>
+}
+
+// 戻り値のマッピング定義
+interface ACtlGetFileReturnTypeMap {
+  text: string
+  json: any // 必要に応じて具体的な型、または unknown に変更してください
+  html: DocumentFragment
+  htmlDoc: Document
+  xmlDoc: XMLDocument
+  css: HTMLStyleElement
+  module: any // JavaScriptモジュールオブジェクト（インポートされたオブジェクト）
+  image: HTMLImageElement
+  canvas: HTMLCanvasElement
+  binary: string
+  blob: Blob
+  file: File
+  objectUrl: string
+  dataUri: string
+  base64: string
+}
+
+// returnType のリテラル型
+type ACtlGetFileReturnType = keyof ACtlGetFileReturnTypeMap
+
+// --- 関連する型定義（ネームスペース内、または外に配置） ---
+
+/** saveFile の content 引数に許容される型 */
+type ACtlSaveFileContent =
+  | string
+  | Blob
+  | File
+  | ArrayBuffer
+  | Element
+  | DocumentFragment
+  | HTMLImageElement
+  | SVGImageElement
+  | HTMLCanvasElement
+  | OffscreenCanvas
+  | object
+  | any // その他すべての型（自動的に文字列変換されるため）
+
+/** saveFile の options 引数の型定義 */
+interface ACtlSaveFileOptions {
+  /** 既存のファイル内容を置き換えるのではなく、末尾に追記するかどうか（デフォルト: false） */
+  append?: boolean
+  /** * 出力フォーマット。
+   * テキストの場合: 'UTF-8' | 'UTF-16LE' | 'UTF-16BE' (デフォルト: 'UTF-8')
+   * 画像の場合: 'png' | 'jpg' | 'webp' (デフォルト: 'png')
+   */
+  format?: "UTF-8" | "UTF-16LE" | "UTF-16BE" | "png" | "jpg" | "webp" | string
+  /** format が 'jpg' または 'webp' の場合の画質。0 から 1 の間の数値（デフォルト: 0.9） */
+  quality?: number
 }

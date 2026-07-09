@@ -1,8 +1,11 @@
+import { removePrefix } from "@/pure/utils"
 import {
   DLT_DOCK_KEY,
   DLT_HISTORY_KEY,
+  DLT_MY_ID,
   getHistoryFromLocalStorage,
   getLinksFromLocalStorage,
+  mergeLinksFast,
   mergeLinksStorage,
   PostLink,
   postLinkText,
@@ -265,8 +268,7 @@ export function dltIME(option = defaultIMEOption) {
           imeState.isActive = false
           inlinePopup.hide()
 
-          const result = mergeLinksStorage(DLT_DOCK_KEY, [selected])
-          const links = getLinksFromLocalStorage(DLT_DOCK_KEY)
+          const { links } = mergeLinksStorage(DLT_DOCK_KEY, [selected])
           window.dispatchEvent(
             new CustomEvent("dlt-dock-updated", { detail: links }),
           )
@@ -338,7 +340,7 @@ class InlineSuggestPopup {
         const bg = isSelected ? "#89b4fa" : "transparent"
         const fg = isSelected ? "#11111b" : "#cdd6f4"
         return `<div style="padding: 4px 8px; background: ${bg}; color: ${fg}; border-radius: 4px; white-space: nowrap;">
-        ${cand.title} <span style="opacity: 0.6; font-size: 10px;">${cand.id || ""}</span>
+        ${cand.title} <span style="opacity: 0.6; font-size: 10px;">K#${cand.id}</span>
       </div>`
       })
       .join("")

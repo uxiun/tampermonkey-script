@@ -1,12 +1,14 @@
 import { getAllMyLinkFromPage } from "./dlt-dom"
 import {
-  collectAndMergeLinks,
+  backupLinks,
   DLT_DOCK_KEY,
   DLT_HISTORY_KEY,
   mergeLinksStorage,
+  overwriteBackupLinks,
   PostLink,
   postLinkText,
   postLinkTextList,
+  restoreLinks,
   searchLinks,
 } from "./dlt-storage"
 import { dltkeys } from "./keys"
@@ -54,16 +56,15 @@ export function startLinkMemo() {
   // ).length
 
   // 💡 履歴をマージして更新
-  // collectAndMergeLinks(scrapedLinks)
-  const mergeResult = mergeLinksStorage(DLT_HISTORY_KEY, scrapedLinks)
+  const { links, result } = mergeLinksStorage(DLT_HISTORY_KEY, scrapedLinks)
   console.log("リンク収集結果:")
-  console.log("新規:", mergeResult.inserted)
-  console.log("更新:", mergeResult.updated)
-  console.log("移動:", mergeResult.moved)
+  console.log("新規:", result.inserted)
+  console.log("更新:", result.updated)
+  console.log("移動:", result.moved)
 
   // 2. 更新された最新の履歴を globalState に同期して描画
-  syncLocalStorage(globalState)
-  globalState.lastAddedCount = mergeResult.inserted.length
+  globalState.history = links
+  globalState.lastAddedCount = result.inserted.length
 
   // 💡【重要】リロード対策：左の台（leftDock）の状態も localStorage から復元する！
   globalState.leftDock = JSON.parse(localStorage.getItem(DLT_DOCK_KEY) || "[]")
@@ -97,8 +98,8 @@ export function startLinkMemo() {
 
     globalState.leftDock = links
 
-    collectAndMergeLinks(links)
-    syncLocalStorage(globalState)
+    const m = mergeLinksStorage(DLT_HISTORY_KEY, links)
+    globalState.history = m.links
 
     // 直接最新のデータを受け取る
     if (globalState.isWidgetActive) {
@@ -113,6 +114,27 @@ export function startLinkMemo() {
     }
   })
 
+  let isAltDown = false
+  window.addEventListener("keyup", e => {
+    if (e.code === "AltLeft") {
+      if (isAltDown) {
+        e.preventDefault()
+        e.stopPropagation()
+        if (globalState.isWidgetActive) {
+          globalState.isWidgetActive = false
+        } else {
+          syncLocalStorage(globalState)
+          globalState.isWidgetActive = true
+          globalState.isSearching = false
+          globalState.searchQuery = ""
+          globalState.currentPage = 0
+          globalState.cursorIndex = 0
+        }
+        renderWidget(globalState)
+      }
+    }
+  })
+
   window.addEventListener(
     "keydown",
     async (e: KeyboardEvent) => {
@@ -124,6 +146,13 @@ export function startLinkMemo() {
       if ((window as any).__dlt_link_hint_active__) return
 
       const state = globalState
+
+      if (e.code === "AltLeft") {
+        e.preventDefault()
+        isAltDown = true
+      } else {
+        isAltDown = false
+      }
 
       // 1. 小窓が非アクティブな時
       if (!state.isWidgetActive) {
@@ -273,6 +302,12 @@ export function startLinkMemo() {
             state.leftDock.push(target)
             // 💡 localStorage にも保存して他タブに通知
             localStorage.setItem(DLT_DOCK_KEY, JSON.stringify(state.leftDock))
+            const history = [
+              target,
+              ...state.history.filter(link => link.id !== target.id),
+            ]
+            state.history = history
+            localStorage.setItem(DLT_HISTORY_KEY, JSON.stringify(history))
 
             state.searchQuery = ""
             state.currentPage = 0
@@ -382,6 +417,12 @@ export function startLinkMemo() {
             state.leftDock.push(target)
             // 💡 保存＆同期
             localStorage.setItem(DLT_DOCK_KEY, JSON.stringify(state.leftDock))
+            const history = [
+              target,
+              ...state.history.filter(link => link.id !== target.id),
+            ]
+            state.history = history
+            localStorage.setItem(DLT_HISTORY_KEY, JSON.stringify(history))
           }
           break
         }
@@ -399,6 +440,22 @@ export function startLinkMemo() {
           state.leftDock = []
           state.isWidgetActive = false
           break
+        case "s":
+          state.isWidgetActive = false
+          break
+        case "b":
+          await backupLinks(state.history)
+          break
+        case "r": {
+          const restored = await restoreLinks(state.history)
+          console.log("restored links:", restored)
+          state.history = restored.links
+          state.lastAddedCount = restored.result.inserted.length
+          break
+        }
+        case "q": {
+          overwriteBackupLinks(state.history)
+        }
       }
 
       renderWidget(state)
@@ -548,7 +605,7 @@ export function renderWidget(state: AppState) {
   if (dockPane) {
     dockPane.innerHTML = `
       <div style="font-size: 11px; color: #e74c3c; font-weight: bold; margin-bottom: 6px;">[ DOCK (台) ]</div>
-      ${state.leftDock.map(p => `<div style="font-size: 12px; margin-bottom: 4px; color: #2ecc71; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">⚓ {${p.title} ${p.id}}</div>`).join("")}
+      ${state.leftDock.map(link => `<div style="font-size: 12px; margin-bottom: 4px; color: #2ecc71; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">⚓ ${postLinkText(link)}</div>`).join("")}
     `
   }
 
@@ -561,7 +618,7 @@ export function renderWidget(state: AppState) {
         ${state.isSearching ? "[ SEARCH RESULTS ]" : "[ HISTORY ]"}
       </div>
       ${rightItems
-        .map((p, idx) => {
+        .map((link, idx) => {
           const isSelected = idx === state.cursorIndex
           return `
           <div style="font-size: 12px; padding: 4px; border-radius: 3px; margin-bottom: 2px;
@@ -569,7 +626,7 @@ export function renderWidget(state: AppState) {
                       color: ${isSelected ? "#f1c40f" : "#ecf0f1"};
                       font-weight: ${isSelected ? "bold" : "normal"};
                       white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
-            ${isSelected ? "➔" : "  "} {${p.title} ${p.id}}
+            ${isSelected ? "➔" : "  "} ${postLinkText(link)}
           </div>
         `
         })
