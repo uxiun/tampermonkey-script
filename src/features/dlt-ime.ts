@@ -237,11 +237,9 @@ export function dltIME(option = defaultIMEOption) {
 
         const len = imeState.candidates.length
         if (e.shiftKey) {
-          imeState.selectedIndex =
-            ((imeState.selectedIndex - 1 + (len + 1)) % (len + 1)) - 1
+          imeState.selectedIndex = (imeState.selectedIndex - 1 + len) % len
         } else {
-          imeState.selectedIndex =
-            ((imeState.selectedIndex + 1 + 1) % (len + 1)) - 1
+          imeState.selectedIndex = (imeState.selectedIndex + 1) % len
         }
 
         renderWidget(imeState, inlinePopup)
