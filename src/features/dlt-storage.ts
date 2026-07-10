@@ -9,6 +9,17 @@ const DLT_SAVE_PATH = "<documents>/autocontrol-dlt-links.json"
 export interface PostLink {
   id: string
   title: string
+  at?: string // 36進法時刻印
+}
+
+export const getAt = () => Date.now().toString(36)
+
+export const sortByAt = (a: PostLink, b: PostLink) => {
+  const atA = a.at || ""
+  const atB = b.at || ""
+  if (atA < atB) return 1
+  if (atA > atB) return -1
+  return 0
 }
 
 export const postLinkText = (postLink: PostLink) =>
@@ -35,82 +46,11 @@ export const getLinksFromLocalStorage = (storageKey: string) => {
   return JSON.parse(localStorage.getItem(storageKey) || "[]") as PostLink[]
 }
 
-export function collectAndMergeLinks(newLinks: PostLink[]) {
-  if (newLinks.length === 0) return
-
-  // 1. 現在の履歴をロード
-  const currentHistory: PostLink[] = JSON.parse(
-    localStorage.getItem(DLT_HISTORY_KEY) || "[]",
-  )
-  let updatedHistory = [...currentHistory]
-
-  // 2. 新しく取得したリンクを1つずつマージ
-  newLinks.reverse().forEach(newLink => {
-    // 💡 既存の同じIDを一旦削除（タイトル更新への対応 ＆ 最新順ソートのための位置リセット）
-    updatedHistory = updatedHistory.filter(p => p.id !== newLink.id)
-    // 💡 常に配列の先頭（最新）に突っ込む
-    updatedHistory.unshift(newLink)
-  })
-
-  // // 必要に応じて最大件数（例: 500件）でキャップをかける
-  // if (updatedHistory.length > 500) {
-  //   updatedHistory = updatedHistory.slice(0, 500)
-  // }
-
-  // 3. 保存
-  localStorage.setItem(DLT_HISTORY_KEY, JSON.stringify(updatedHistory))
-}
-
 export type MergeLinkResult = {
   inserted: PostLink[]
   updated: PostLink[]
   moved: PostLink[]
 }
-
-// export function mergeLinksStorage(
-//   storageKey: string,
-//   newLinks: PostLink[],
-// ): MergeLinkResult {
-//   if (newLinks.length === 0)
-//     return {
-//       inserted: [],
-//       updated: [],
-//       moved: [],
-//     }
-
-//   const currentHistory: PostLink[] = JSON.parse(
-//     localStorage.getItem(storageKey) || "[]",
-//   )
-//   let updatedHistory = [...currentHistory]
-//   const result: MergeLinkResult = {
-//     inserted: [],
-//     updated: [],
-//     moved: [],
-//   }
-
-//   // 2. 新しく取得したリンクを1つずつマージ
-//   newLinks.reverse().forEach(newLink => {
-//     let upd = false
-//     let moved = false
-//     // 💡 既存の同じIDを一旦削除（タイトル更新への対応 ＆ 最新順ソートのための位置リセット）
-//     updatedHistory = updatedHistory.filter(p => {
-//       if (p.id === newLink.id) {
-//         if (p.title !== newLink.title) upd = true
-//         else moved = true
-//         return false
-//       } else return true
-//     })
-//     // 💡 常に配列の先頭（最新）に突っ込む
-//     updatedHistory.unshift(newLink)
-//     if (upd) result.updated.push(newLink)
-//     else if (moved) result.moved.push(newLink)
-//     else result.inserted.push(newLink)
-//   })
-
-//   // 3. 保存
-//   localStorage.setItem(storageKey, JSON.stringify(updatedHistory))
-//   return result
-// }
 
 export function mergeLinksStorage(
   storageKey: string,
@@ -138,8 +78,8 @@ export function mergeLinksStorage(
 }
 
 export function mergeLinksFast(
-  currentHistory: PostLink[], // 元のファイルの中身（パース済みの配列）
-  newLinks: PostLink[], // 追加したい新しいリンク
+  currentHistory: PostLink[], // 元の履歴（またはバックアップファイルの中身）
+  newLinks: PostLink[], // ページから自動取得、またはDOCK等から流れてきた最新リンク
 ): { links: PostLink[]; result: MergeLinkResult } {
   if (newLinks.length === 0) {
     return {
@@ -150,47 +90,63 @@ export function mergeLinksFast(
 
   const result = {
     inserted: [] as PostLink[],
-    updated: new Map<string, PostLink>(),
-    moved: new Map<string, PostLink>(),
+    updated: [] as PostLink[],
+    moved: [] as PostLink[],
   }
 
-  // 1. 新しいリンクのIDを高速検索できるように Set化（重複排除と存在チェック用）
-  const newLinksMap = new Map<string, PostLink>()
-  newLinks.forEach(link => newLinksMap.set(link.id, link))
+  const currentTime = getAt()
 
-  // 2. 既存の履歴から、新しいリンクに含まれるIDを「一撃」で弾き出す（1回のループで完結）
-  // 新しいリンクにあるIDは、あとで「先頭」に追加するため、古い位置にあるものはここで残さない
-  const filteredHistory = currentHistory.filter(p => {
-    const hasNew = newLinksMap.has(p.id)
+  // 高速検索用に新しいリンクのマップを作成
+  const newLinksMap = new Map<string, PostLink>(newLinks.map(l => [l.id, l]))
+
+  // 既存リンクの中で「新リンクと重複していないもの」だけを綺麗に残す
+  // 新リンク側でタイトルが変わっている場合、または新規の場合は後で先頭に差し込むため
+  const dup = new Set<string>()
+  const filteredHistory = currentHistory.filter(oldLink => {
+    const hasNew = newLinksMap.has(oldLink.id)
     if (hasNew) {
-      const newLink = newLinksMap.get(p.id)!
-      if (p.title !== newLink.title) result.updated.set(newLink.id, newLink)
-      else result.moved.set(newLink.id, newLink)
+      const newLink = newLinksMap.get(oldLink.id)!
+      if (oldLink.title !== newLink.title) {
+        // タイトルが更新された：新しいatを付与して先頭送りのため、ここでは弾く
+        const updatedLink = { ...newLink, at: currentTime }
+        result.updated.push(updatedLink)
+        return false
+      } else if ((oldLink.at ?? "") < (newLink.at ?? "")) {
+        result.moved.push(newLink)
+        return false
+      } else {
+        // タイトルもIDも完全に一致：既存の順番と古い `at` を完全に維持するため、そのまま残す
+        if (dup.has(newLink.id))
+          return false // 既存履歴の中で被ってる不具合
+        else {
+          dup.add(newLink.id)
+          return true
+        }
+      }
     }
-    return !hasNew // 新しいリンクにIDが含まれていなければ残す
+    return true // 新リンクに全くなければそのまま位置を維持
   })
 
-  // 3. まだ inserted/updated/moved のどれにも分類されていない newLinks は「完全新規(inserted)」
+  // 新リンクの中で、まだ処理（updated/moved）されていないものは「完全新規」
   newLinks.forEach(newLink => {
-    const isClassified =
-      result.updated.has(newLink.id) || result.moved.has(newLink.id)
-
-    if (!isClassified) {
-      result.inserted.push(newLink)
+    if (
+      !dup.has(newLink.id) &&
+      !result.moved.some(l => l.id === newLink.id) &&
+      !result.updated.some(l => l.id === newLink.id)
+    ) {
+      const insertedLink = { ...newLink, at: currentTime }
+      result.inserted.push(insertedLink)
     }
   })
 
-  // 4. 【ここがキモ】スプレッド演算子で「新リンク（最新順）」と「残った古い履歴」をガッチャンコ
-  // ループ内で unshift を連打するのをやめ、最後に1回だけ配列を結合する
-  const updatedHistory = [...newLinks, ...filteredHistory]
+  const sorted = [...result.moved, ...filteredHistory].sort(sortByAt)
+
+  // 💡 結合の並び順: [ 完全新規(inserted) + タイトル更新(updated) ] を最先頭に、その後に既存の順序を維持した配列
+  const updatedHistory = [...result.inserted, ...result.updated, ...sorted]
 
   return {
     links: updatedHistory,
-    result: {
-      inserted: result.inserted,
-      updated: Array.from(result.updated.values()),
-      moved: Array.from(result.moved.values()),
-    },
+    result,
   }
 }
 
@@ -229,12 +185,48 @@ export const restoreLinks = async (current?: PostLink[]) => {
   const fileHistory: PostLink[] = await ACtl.getFile(DLT_SAVE_PATH, "json")
   const currentHistory = current ?? getHistoryFromLocalStorage()
 
-  const m = mergeLinksFast(fileHistory, currentHistory)
-  console.log("merge result:", m.result)
-  console.log("restored", m.links.length, "history")
+  // 一旦IDの重複を排除して全件結合する（Mapのキー特性を利用）
+  const unionMap = new Map<string, PostLink>()
 
-  localStorage.setItem(DLT_HISTORY_KEY, JSON.stringify(m.links))
-  return m
+  // 古いものから順にMapに突っ込むことで、新しい `at` を持つ方が最終的に上書き残るようにする
+  // 1. まず現在のローカル履歴を突っ込む
+  currentHistory.forEach(l => unionMap.set(l.id, l))
+  // 2. 次にファイル側の履歴を突っ込む（ファイル側の方が at が新しい、あるいは未定義の古いデータがある）
+  fileHistory.forEach(l => {
+    const existing = unionMap.get(l.id)
+    // 両方に存在する場合、at を比較して新しい方を採用（未定義は最古とみなす）
+    if (existing) {
+      const existingAt = existing.at || ""
+      const fileAt = l.at || ""
+      if (fileAt >= existingAt) {
+        unionMap.set(l.id, l)
+      }
+    } else {
+      unionMap.set(l.id, l)
+    }
+  })
+
+  const mergedList = Array.from(unionMap.values())
+
+  // 💡 ここがコア： at 属性の降順（新しい順）で並び替える。at が無いものは末尾（過去）へ。
+  mergedList.sort(sortByAt)
+
+  // mergedList.sort((a, b) => {
+  //   const atA = a.at || ""
+  //   const atB = b.at || ""
+  //   if (atA < atB) return 1
+  //   if (atA > atB) return -1
+  //   return 0
+  // })
+
+  console.log(
+    "⚓ タイムスタンプベースで復元・ソート完了:",
+    mergedList.length,
+    "件",
+  )
+  localStorage.setItem(DLT_HISTORY_KEY, JSON.stringify(mergedList))
+
+  return mergedList
 }
 
 // キーワード群によるAND包含検索 ＆ スコアリングロジック

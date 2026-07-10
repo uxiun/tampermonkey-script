@@ -1,5 +1,5 @@
 import { getAllMyLinkFromPage } from "./dlt-dom"
-import { collectAndMergeLinks } from "./dlt-storage"
+import { DLT_HISTORY_KEY, mergeLinksStorage } from "./dlt-storage"
 
 export function watchDltPage() {
   console.log("watching dlt.kitetu.com")
@@ -24,7 +24,7 @@ export function watchDltPage() {
         ) {
           console.log("新規投稿")
           setTimeout(() => {
-            collectAndMergeLinks(getAllMyLinkFromPage())
+            mergeLinksStorage(DLT_HISTORY_KEY, getAllMyLinkFromPage())
             window.dispatchEvent(new CustomEvent("dlt-history-updated"))
           }, 500)
           return
@@ -33,7 +33,7 @@ export function watchDltPage() {
         if (document.activeElement?.matches("input#kw")) {
           console.log("全知検索")
           setTimeout(() => {
-            collectAndMergeLinks(getAllMyLinkFromPage())
+            mergeLinksStorage(DLT_HISTORY_KEY, getAllMyLinkFromPage())
             window.dispatchEvent(new CustomEvent("dlt-history-updated"))
           }, 300)
         }

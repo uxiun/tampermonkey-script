@@ -3,6 +3,7 @@ import {
   backupLinks,
   DLT_DOCK_KEY,
   DLT_HISTORY_KEY,
+  getAt,
   mergeLinksStorage,
   overwriteBackupLinks,
   PostLink,
@@ -88,18 +89,20 @@ export function startLinkMemo() {
   // 💡【新設】同じタブ内で myLinkHint 等が台を更新した瞬間をキャッチ
   window.addEventListener("dlt-dock-updated", (e: any) => {
     console.log("⚓ 同一タブ内での台の更新を検知:", e.detail)
-    const links: PostLink[] = e.detail
+    const links = (e.detail as PostLink[]).map(l => ({ ...l, at: getAt() }))
 
-    // 増えた差分を計算（手動リンクヒントで1件ないし複数件増えた場合）
-    const diff = links.length - globalState.leftDock.length
+    const m = mergeLinksStorage(DLT_HISTORY_KEY, links)
+
+    const diff = m.result.inserted.length
     if (diff > 0) {
       globalState.lastAddedCount = diff // 直近追加件数を更新
     }
 
     globalState.leftDock = links
 
-    const m = mergeLinksStorage(DLT_HISTORY_KEY, links)
+    console.log(globalState.history.slice(0, 5))
     globalState.history = m.links
+    console.log(globalState.history.slice(0, 5))
 
     // 直接最新のデータを受け取る
     if (globalState.isWidgetActive) {
@@ -299,11 +302,12 @@ export function startLinkMemo() {
           e.stopPropagation()
           const target = currentItems[state.cursorIndex]
           if (target) {
-            state.leftDock.push(target)
+            const targetWithAt = { ...target, at: getAt() }
+            state.leftDock.push(targetWithAt)
             // 💡 localStorage にも保存して他タブに通知
             localStorage.setItem(DLT_DOCK_KEY, JSON.stringify(state.leftDock))
             const history = [
-              target,
+              targetWithAt,
               ...state.history.filter(link => link.id !== target.id),
             ]
             state.history = history
@@ -414,11 +418,12 @@ export function startLinkMemo() {
         case "Enter": {
           const target = currentItems[state.cursorIndex]
           if (target) {
-            state.leftDock.push(target)
+            const targetWithAt = { ...target, at: getAt() }
+            state.leftDock.push(targetWithAt)
             // 💡 保存＆同期
             localStorage.setItem(DLT_DOCK_KEY, JSON.stringify(state.leftDock))
             const history = [
-              target,
+              targetWithAt,
               ...state.history.filter(link => link.id !== target.id),
             ]
             state.history = history
@@ -449,8 +454,7 @@ export function startLinkMemo() {
         case "r": {
           const restored = await restoreLinks(state.history)
           console.log("restored links:", restored)
-          state.history = restored.links
-          state.lastAddedCount = restored.result.inserted.length
+          state.history = restored
           break
         }
         case "q": {
@@ -626,7 +630,7 @@ export function renderWidget(state: AppState) {
                       color: ${isSelected ? "#f1c40f" : "#ecf0f1"};
                       font-weight: ${isSelected ? "bold" : "normal"};
                       white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
-            ${isSelected ? "➔" : "  "} ${postLinkText(link)}
+            ${postLinkText(link)}
           </div>
         `
         })
@@ -699,11 +703,11 @@ function executeLinkOperation(links: PostLink[]) {
                   input.dispatchEvent(enterEvent)
                   // ;(window as any).__dlt_link_hint_active__ = false
 
-                  // globalState.leftDock = []
-                  // localStorage.setItem(
-                  //   DLT_DOCK_KEY,
-                  //   JSON.stringify(globalState.leftDock),
-                  // )
+                  globalState.leftDock = []
+                  localStorage.setItem(
+                    DLT_DOCK_KEY,
+                    JSON.stringify(globalState.leftDock),
+                  )
                 },
               },
             ],
