@@ -11,6 +11,7 @@ import {
   postLinkTextList,
   restoreLinks,
   searchLinks,
+  useCount,
 } from "./dlt-storage"
 import { dltkeys } from "./keys"
 import { HintMap, linkHint } from "./link-hint"
@@ -89,7 +90,7 @@ export function startLinkMemo() {
   // 💡【新設】同じタブ内で myLinkHint 等が台を更新した瞬間をキャッチ
   window.addEventListener("dlt-dock-updated", (e: any) => {
     console.log("⚓ 同一タブ内での台の更新を検知:", e.detail)
-    const links = (e.detail as PostLink[]).map(l => ({ ...l, at: getAt() }))
+    const links = e.detail as PostLink[]
 
     const m = mergeLinksStorage(DLT_HISTORY_KEY, links)
 
@@ -302,7 +303,7 @@ export function startLinkMemo() {
           e.stopPropagation()
           const target = currentItems[state.cursorIndex]
           if (target) {
-            const targetWithAt = { ...target, at: getAt() }
+            const targetWithAt = useCount({ ...target, at: getAt() })
             state.leftDock.push(targetWithAt)
             // 💡 localStorage にも保存して他タブに通知
             localStorage.setItem(DLT_DOCK_KEY, JSON.stringify(state.leftDock))
@@ -418,7 +419,7 @@ export function startLinkMemo() {
         case "Enter": {
           const target = currentItems[state.cursorIndex]
           if (target) {
-            const targetWithAt = { ...target, at: getAt() }
+            const targetWithAt = useCount({ ...target, at: getAt() })
             state.leftDock.push(targetWithAt)
             // 💡 保存＆同期
             localStorage.setItem(DLT_DOCK_KEY, JSON.stringify(state.leftDock))
@@ -608,7 +609,7 @@ export function renderWidget(state: AppState) {
   const dockPane = document.getElementById("dlt-dock-pane")
   if (dockPane) {
     dockPane.innerHTML = `
-      <div style="font-size: 11px; color: #e74c3c; font-weight: bold; margin-bottom: 6px;">[ DOCK (台) ]</div>
+      <div style="font-size: 11px; color: #e74c3c; font-weight: bold; margin-bottom: 6px;">[ DOCK ]</div>
       ${state.leftDock.map(link => `<div style="font-size: 12px; margin-bottom: 4px; color: #2ecc71; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">⚓ ${postLinkText(link)}</div>`).join("")}
     `
   }

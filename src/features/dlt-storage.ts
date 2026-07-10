@@ -10,6 +10,7 @@ export interface PostLink {
   id: string
   title: string
   at?: string // 36進法時刻印
+  use?: number
 }
 
 export const getAt = () => Date.now().toString(36)
@@ -21,6 +22,9 @@ export const sortByAt = (a: PostLink, b: PostLink) => {
   if (atA > atB) return -1
   return 0
 }
+
+export const useCount = (l: PostLink) =>
+  l.use ? { ...l, use: l.use + 1 } : { ...l, use: 1 }
 
 export const postLinkText = (postLink: PostLink) =>
   `{${postLink.title} K#${removePrefix(DLT_MY_ID, postLink.id)}}`
@@ -242,8 +246,8 @@ export function searchLinks(query: string, links: PostLink[]) {
     let isMatch = true
     let totalScore = 0
 
-    for (let j = 0; j < keywords.length; j++) {
-      const kw = keywords[j].toLowerCase()
+    for (const keyword of keywords) {
+      const kw = keyword.toLowerCase()
       const idx = titleLower.indexOf(kw)
 
       if (idx === -1) {
@@ -252,14 +256,17 @@ export function searchLinks(query: string, links: PostLink[]) {
       }
 
       // 【スコアリング・アルゴリズム】
-      let kwScore = Math.max(0, 100 - idx)
-      if (titleLower === kw) kwScore += 500
-      if (idx === 0 || titleLower.charAt(idx - 1) === " ") kwScore += 50
+      // let kwScore = Math.max(0, 100 - idx)
+      let kwScore = idx >= 0 ? 100 : 0
+      if (titleLower === kw) kwScore += 5000
+      if (idx === 0) kwScore += 1000
+      if (titleLower.charAt(idx - 1) === " ") kwScore += 100
 
       totalScore += kwScore
     }
 
     if (isMatch) {
+      totalScore += link.use ?? 0
       results.push({ link, score: totalScore })
     }
   }

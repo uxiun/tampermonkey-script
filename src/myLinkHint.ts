@@ -1,7 +1,7 @@
 // src/myLinkHint.ts
 
 import { getLinkAuto } from "./features/dlt-dom"
-import { DLT_DOCK_KEY, PostLink } from "./features/dlt-storage"
+import { DLT_DOCK_KEY, getAt, PostLink, useCount } from "./features/dlt-storage"
 import { HintMap, linkHint } from "./features/link-hint"
 import { getVisibleElements } from "./pure/dom"
 import { showStatusTooltip } from "./pure/tooltip"
@@ -160,7 +160,12 @@ const perSiteLaunch = {
           const dock: PostLink[] = JSON.parse(
             localStorage.getItem(DLT_DOCK_KEY) || "[]",
           )
-          const newDock = [...getLinkAuto(getLinkElement(el)), ...dock]
+          const newDock = [
+            ...getLinkAuto(getLinkElement(el)).map(l =>
+              useCount({ ...l, at: getAt() }),
+            ),
+            ...dock,
+          ]
 
           localStorage.setItem(DLT_DOCK_KEY, JSON.stringify(newDock))
 

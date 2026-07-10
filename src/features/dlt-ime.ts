@@ -10,6 +10,7 @@ import {
   PostLink,
   postLinkText,
   searchLinks,
+  useCount,
 } from "./dlt-storage"
 
 type IMEOption = {
@@ -36,7 +37,7 @@ let imeState: IMEState = {
   isActive: false,
   candidates: [] as PostLink[],
   history: [] as PostLink[],
-  selectedIndex: -1,
+  selectedIndex: 0,
   query: "",
   startPos: 0,
   endPos: 0,
@@ -174,8 +175,8 @@ export function dltIME(option = defaultIMEOption) {
 
     imeState = {
       ...searchResult,
-      // タイピングによる新しい文字入力があった時だけ、選択を -1 にリセットする
-      selectedIndex: isTyping ? -1 : imeState.selectedIndex,
+      // タイピングによる新しい文字入力があった時だけ、選択をリセットする
+      selectedIndex: isTyping ? 0 : imeState.selectedIndex,
     }
 
     renderWidget(imeState, inlinePopup)
@@ -268,7 +269,9 @@ export function dltIME(option = defaultIMEOption) {
           imeState.isActive = false
           inlinePopup.hide()
 
-          const { links } = mergeLinksStorage(DLT_DOCK_KEY, [selected])
+          const { links } = mergeLinksStorage(DLT_DOCK_KEY, [
+            useCount(selected),
+          ])
           window.dispatchEvent(
             new CustomEvent("dlt-dock-updated", { detail: links }),
           )
