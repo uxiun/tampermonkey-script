@@ -1,58 +1,74 @@
+import { getAllLinksFromIDB, mergeLinksToIDB } from "./dlt-db"
 import { getAllMyLinkFromPage } from "./dlt-dom"
-import { DLT_HISTORY_KEY, mergeLinksStorage } from "./dlt-storage"
+import { PostLink } from "./dlt-storage"
 
-export function watchDltPage() {
+const state: {
+  history: PostLink[]
+} = {
+  history: [],
+}
+
+async function syncIDB() {
+  state.history = await getAllLinksFromIDB()
+}
+
+async function mergeLinks(links: PostLink[]) {
+  const m = await mergeLinksToIDB(links, state.history)
+  state.history = m.links
+  return m
+}
+
+export async function watchDltPage() {
   console.log("watching dlt.kitetu.com")
 
   if ((window as any).__dlt_watching__) return
   ;(window as any).__dlt_watching__ = true
-  document.addEventListener(
-    "keydown",
-    e => {
-      // IME
-      if (e.isComposing) return
+  await syncIDB()
 
-      // Ctrlキー（またはMacのCmdキー）とEnterキーが同時に押されたか判定
-      const isCtrlOrCmd = e.ctrlKey || e.metaKey
-      const isEnter = e.key === "Enter" || e.keyCode === 13
+  // document.addEventListener(
+  //   "keydown",
+  //   e => {
+  //     // IME
+  //     if (e.isComposing) return
 
-      if (isEnter) {
-        if (
-          isCtrlOrCmd &&
-          (document.activeElement?.matches("#drw input") ||
-            document.activeElement?.matches("#drw textarea"))
-        ) {
-          console.log("新規投稿")
-          setTimeout(() => {
-            const res = mergeLinksStorage(
-              DLT_HISTORY_KEY,
-              getAllMyLinkFromPage(),
-            )
-            window.dispatchEvent(
-              new CustomEvent("dlt-history-updated", { detail: res }),
-            )
-          }, 500)
-          return
-        }
+  //     // Ctrlキー（またはMacのCmdキー）とEnterキーが同時に押されたか判定
+  //     const isCtrlOrCmd = e.ctrlKey || e.metaKey
+  //     const isEnter = e.key === "Enter" || e.keyCode === 13
 
-        if (document.activeElement?.matches("input#kw")) {
-          console.log("全知検索")
-          setTimeout(() => {
-            const res = mergeLinksStorage(
-              DLT_HISTORY_KEY,
-              getAllMyLinkFromPage(),
-            )
-            window.dispatchEvent(
-              new CustomEvent("dlt-history-updated", { detail: res }),
-            )
-          }, 300)
-        }
-      }
-    },
-    true,
-  ) // ←ここが重要：サイト側の処理より先に実行する
+  //     if (isEnter) {
+  //       if (
+  //         isCtrlOrCmd &&
+  //         (document.activeElement?.matches("#drw input") ||
+  //           document.activeElement?.matches("#drw textarea"))
+  //       ) {
+  //         console.log("新規投稿")
+  //         setTimeout(() => {
+  //           const res = mergeLinksToIDB(getAllMyLinkFromPage())
+  //           window.dispatchEvent(
+  //             new CustomEvent("dlt-history-updated", { detail: res }),
+  //           )
+  //         }, 500)
+  //         return
+  //       }
 
-  const observer = new MutationObserver((mutations: MutationRecord[]) => {
+  //       if (document.activeElement?.matches("input#kw")) {
+  //         console.log("全知検索")
+  //         setTimeout(() => {
+  //           const res = mergeLinksStorage(
+  //             DLT_HISTORY_KEY,
+  //             getAllMyLinkFromPage(),
+  //           )
+  //           window.dispatchEvent(
+  //             new CustomEvent("dlt-history-updated", { detail: res }),
+  //           )
+  //         }, 300)
+  //       }
+  //     }
+  //   },
+  //   true,
+  // ) // ←ここが重要：サイト側の処理より先に実行する
+
+  const observer = new MutationObserver(async (mutations: MutationRecord[]) => {
     for (const mutation of mutations) {
       if (mutation.type === "childList" && mutation.addedNodes.length > 0) {
         if (
@@ -61,7 +77,7 @@ export function watchDltPage() {
           )
         ) {
           console.log("mutation! .pg")
-          const res = mergeLinksStorage(DLT_HISTORY_KEY, getAllMyLinkFromPage())
+          const res = await mergeLinks(getAllMyLinkFromPage())
           if (
             res.result.inserted.length > 0 ||
             res.result.moved.length > 0 ||

@@ -12,6 +12,11 @@ import {
   searchLinks,
   useCount,
 } from "./dlt-storage"
+import {
+  getAllLinksFromIDB,
+  mergeLinksToIDB,
+  setupTabSyncListener,
+} from "./dlt-db"
 
 type IMEOption = {
   suggestionNumbers: number
@@ -45,8 +50,11 @@ let imeState: IMEState = {
   target: null,
 }
 
-function syncLocalStorage(state: IMEState) {
-  state.history = JSON.parse(localStorage.getItem(DLT_HISTORY_KEY) || "[]")
+// function syncLocalStorage(state: IMEState) {
+//   state.history = JSON.parse(localStorage.getItem(DLT_HISTORY_KEY) || "[]")
+// }
+async function syncIDB(state: IMEState) {
+  state.history = await getAllLinksFromIDB()
 }
 
 // キーワード群によるAND包含検索 ＆ スコアリングロジック
@@ -134,16 +142,29 @@ export function dltIME(option = defaultIMEOption) {
   const inlinePopup = new InlineSuggestPopup()
 
   // 初回起動時にローカルストレージから履歴キャッシュを読み込む
-  syncLocalStorage(imeState)
+  syncIDB(imeState)
+
+  setupTabSyncListener(async diff => {
+    const m = await mergeLinksToIDB(diff, imeState.history)
+    imeState.history = m.links
+
+    if (!imeState.isActive || !imeState.target) return
+    const prevSelectedIndex = imeState.selectedIndex
+    imeState = {
+      ...runSearch(option, imeState),
+      selectedIndex: prevSelectedIndex,
+    }
+    renderWidget(imeState, inlinePopup)
+  })
 
   // 外部イベントで履歴が同期された際のハンドラー（現在の検索状態を維持したまま再検索）
   const handleExternalRefresh = () => {
     if (!imeState.isActive || !imeState.target) {
-      syncLocalStorage(imeState)
+      syncIDB(imeState)
       return
     }
     const prevSelectedIndex = imeState.selectedIndex
-    syncLocalStorage(imeState)
+    syncIDB(imeState)
     imeState = {
       ...runSearch(option, imeState),
       selectedIndex: prevSelectedIndex, // 外部更新時は選択インデックスを維持する
@@ -152,9 +173,6 @@ export function dltIME(option = defaultIMEOption) {
   }
 
   window.addEventListener("dlt-history-updated", handleExternalRefresh)
-  window.addEventListener("storage", e => {
-    if (e.key === DLT_HISTORY_KEY) handleExternalRefresh()
-  })
 
   // 共通の入力/状態更新ロジック（タイピング時専用）
   function handleImeLookup(isTyping: boolean) {

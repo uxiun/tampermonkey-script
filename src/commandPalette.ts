@@ -5,6 +5,7 @@ import {
   DLT_HISTORY_KEY,
   getHistoryFromLocalStorage,
   mergeLinksStorage,
+  migrateLocalStorageToIDB,
 } from "./features/dlt-storage"
 
 function showCommandPalette() {
@@ -50,10 +51,14 @@ function showCommandPalette() {
   input.focus()
 }
 
-function executeCommand(val: string) {
+async function executeCommand(val: string) {
   console.log("実行するコマンド:", val)
 
   switch (val) {
+    case "migrate idb":
+      const ok = confirm("LocalStorageからIndexedDBに移行しますか？")
+      if (ok) migrateLocalStorageToIDB()
+      break
     case "hello":
       console.log("hello, world!")
       break

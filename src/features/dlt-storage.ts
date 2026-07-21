@@ -1,16 +1,18 @@
 import { removePrefix } from "@/pure/utils"
+import { getAllLinksFromIDB, saveLinksToIDB } from "./dlt-db"
 
 export const DLT_HISTORY_KEY = "dlt-history"
 export const DLT_DOCK_KEY = "dlt-dock"
 export const DLT_MY_ID = "7779"
 const DLT_SAVE_PATH = "<documents>/autocontrol-dlt-links.json"
 
-// localStorageに保存するデータ型
 export interface PostLink {
   id: string
   title: string
   at?: string // 36進法時刻印
-  use?: number
+  use?: number // 使用回数
+  fg?: string[] // 前景=親ID
+  bg?: string[] // 後景=子ID
 }
 
 export const getAt = () => Date.now().toString(36)
@@ -187,7 +189,7 @@ export const backupLinks = async (current?: PostLink[]) => {
 
 export const restoreLinks = async (current?: PostLink[]) => {
   const fileHistory: PostLink[] = await ACtl.getFile(DLT_SAVE_PATH, "json")
-  const currentHistory = current ?? getHistoryFromLocalStorage()
+  const currentHistory = current ?? (await getAllLinksFromIDB())
 
   // 一旦IDの重複を排除して全件結合する（Mapのキー特性を利用）
   const unionMap = new Map<string, PostLink>()
@@ -215,20 +217,14 @@ export const restoreLinks = async (current?: PostLink[]) => {
   // 💡 ここがコア： at 属性の降順（新しい順）で並び替える。at が無いものは末尾（過去）へ。
   mergedList.sort(sortByAt)
 
-  // mergedList.sort((a, b) => {
-  //   const atA = a.at || ""
-  //   const atB = b.at || ""
-  //   if (atA < atB) return 1
-  //   if (atA > atB) return -1
-  //   return 0
-  // })
-
   console.log(
     "⚓ タイムスタンプベースで復元・ソート完了:",
     mergedList.length,
     "件",
   )
-  localStorage.setItem(DLT_HISTORY_KEY, JSON.stringify(mergedList))
+
+  // localStorage.setItem(DLT_HISTORY_KEY, JSON.stringify(mergedList))
+  await saveLinksToIDB(mergedList)
 
   return mergedList
 }
@@ -272,4 +268,25 @@ export function searchLinks(query: string, links: PostLink[]) {
   }
 
   return results.sort((a, b) => b.score - a.score).map(r => r.link)
+}
+
+// 初回だけ localStorage から IDB へ引越しさせる関数
+export async function migrateLocalStorageToIDB() {
+  const rawLocalData = localStorage.getItem(DLT_HISTORY_KEY)
+  if (rawLocalData) {
+    try {
+      const localLinks: PostLink[] = JSON.parse(rawLocalData)
+      if (localLinks.length > 0) {
+        console.log(
+          `📦 LocalStorageから ${localLinks.length} 件のデータをIndexedDBへ移行中...`,
+        )
+        await saveLinksToIDB(localLinks, false)
+        console.log("✅ 移行完了！ LocalStorageをクリーンアップします")
+      }
+    } catch (e) {
+      console.error("Migration failed", e)
+    }
+    // 二度と移行が走らないように localStorage 側は消去する
+    localStorage.removeItem(DLT_HISTORY_KEY)
+  }
 }

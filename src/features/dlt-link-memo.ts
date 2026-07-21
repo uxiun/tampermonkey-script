@@ -1,3 +1,8 @@
+import {
+  getAllLinksFromIDB,
+  mergeLinksToIDB,
+  setupTabSyncListener,
+} from "./dlt-db"
 import { getAllMyLinkFromPage } from "./dlt-dom"
 import {
   backupLinks,
@@ -5,7 +10,6 @@ import {
   DLT_HISTORY_KEY,
   getAt,
   MergeLinkResult,
-  mergeLinksStorage,
   overwriteBackupLinks,
   PostLink,
   postLinkText,
@@ -43,31 +47,42 @@ let globalState: AppState = {
   lastAddedCount: 0,
 }
 
-function syncLocalStorage(state: AppState) {
-  state.history = JSON.parse(localStorage.getItem(DLT_HISTORY_KEY) || "[]")
+// function syncLocalStorage(state: AppState) {
+//   state.history = JSON.parse(localStorage.getItem(DLT_HISTORY_KEY) || "[]")
+// }
+
+async function syncIDB(state: AppState) {
+  state.history = await getAllLinksFromIDB()
 }
 
-export function startLinkMemo() {
+export async function startLinkMemo() {
   console.log("🚀 startLinkMemo")
 
-  // 1. 【自動収集】ページが開かれた／更新された瞬間、画面内の投稿を全部さらって自動収集
-  // (要素の取得セレクターはあなたのサイトの環境に合わせて調整してください)
-  const scrapedLinks: PostLink[] = getAllMyLinkFromPage()
+  // 1. 初回起動時にIDBから全件取得してメモリ(globalState.history)にロード
+  globalState.history = await getAllLinksFromIDB()
 
-  // const beforeCount = (
-  //   JSON.parse(localStorage.getItem(DLT_HISTORY_KEY) || "[]") as PostLink[]
-  // ).length
+  // 2. タブ間同期リスナーをセット（他タブで変更があったら再読み込み）
+  setupTabSyncListener(async diff => {
+    const m = await mergeLinksToIDB(diff, globalState.history)
+    globalState.history = m.links
+    if (globalState.isWidgetActive) renderWidget(globalState)
 
-  // 💡 履歴をマージして更新
-  const { links, result } = mergeLinksStorage(DLT_HISTORY_KEY, scrapedLinks)
-  console.log("リンク収集結果:")
-  console.log("新規:", result.inserted)
-  console.log("更新:", result.updated)
-  console.log("移動:", result.moved)
+    // IME側のインメモリキャッシュも同期するカスタムイベントを発行
+    window.dispatchEvent(new CustomEvent("dlt-history-updated", { detail: m }))
+  })
 
-  // 2. 更新された最新の履歴を globalState に同期して描画
-  globalState.history = links
-  globalState.lastAddedCount = result.inserted.length
+  // 3. 画面内からの自動収集リンクをIDBにマージ
+  const scrapedLinks = getAllMyLinkFromPage()
+  if (scrapedLinks.length > 0) {
+    const { links, result } = await mergeLinksToIDB(
+      scrapedLinks,
+      globalState.history,
+    )
+    globalState.history = links
+    globalState.lastAddedCount = result.inserted.length
+
+    renderWidget(globalState)
+  }
 
   // 💡【重要】リロード対策：左の台（leftDock）の状態も localStorage から復元する！
   globalState.leftDock = JSON.parse(localStorage.getItem(DLT_DOCK_KEY) || "[]")
@@ -89,11 +104,11 @@ export function startLinkMemo() {
   })
 
   // 💡【新設】同じタブ内で myLinkHint 等が台を更新した瞬間をキャッチ
-  window.addEventListener("dlt-dock-updated", (e: any) => {
+  window.addEventListener("dlt-dock-updated", async (e: any) => {
     console.log("⚓ 同一タブ内での台の更新を検知:", e.detail)
     const links = e.detail as PostLink[]
 
-    const m = mergeLinksStorage(DLT_HISTORY_KEY, links)
+    const m = await mergeLinksToIDB(links)
 
     const diff = m.result.inserted.length
     if (diff > 0) {
@@ -117,8 +132,8 @@ export function startLinkMemo() {
       links: PostLink[]
       result: MergeLinkResult
     } = e.detail
-    if (result.inserted.length > 0)
-      globalState.lastAddedCount = result.inserted.length
+    if (res.result.inserted.length > 0)
+      globalState.lastAddedCount = res.result.inserted.length
     globalState.history = res.links
     if (globalState.isWidgetActive) {
       renderWidget(globalState) // 即座に描画更新！
@@ -134,7 +149,8 @@ export function startLinkMemo() {
         if (globalState.isWidgetActive) {
           globalState.isWidgetActive = false
         } else {
-          syncLocalStorage(globalState)
+          // syncLocalStorage(globalState)
+          syncIDB(globalState)
           globalState.isWidgetActive = true
           globalState.isSearching = false
           globalState.searchQuery = ""
@@ -177,7 +193,8 @@ export function startLinkMemo() {
         if ((e.key === "s" || e.key === "S") && !isInput) {
           e.preventDefault()
           e.stopPropagation()
-          syncLocalStorage(state)
+          // syncLocalStorage(state)
+          syncIDB(globalState)
           state.isWidgetActive = true
           state.isSearching = false
           state.searchQuery = ""
@@ -425,7 +442,11 @@ export function startLinkMemo() {
           break
         case "Enter": {
           const target = currentItems[state.cursorIndex]
-          if (target) {
+          if (!target) return
+          if (state.leftDock.some(l => l.id === target.id)) {
+            state.leftDock = state.leftDock.filter(l => l.id !== target.id)
+            localStorage.setItem(DLT_DOCK_KEY, JSON.stringify(state.leftDock))
+          } else {
             const targetWithAt = useCount({ ...target, at: getAt() })
             state.leftDock.push(targetWithAt)
             // 💡 保存＆同期
@@ -445,8 +466,9 @@ export function startLinkMemo() {
           break
         case " ":
           executeLinkOperation(state.leftDock)
-          renderWidget(globalState)
-          return
+          state.leftDock = []
+          localStorage.setItem(DLT_DOCK_KEY, JSON.stringify(state.leftDock))
+          break
         case "Tab":
           await executeCopy(state.leftDock.reverse())
           state.leftDock = []
@@ -579,8 +601,8 @@ export function renderWidget(state: AppState) {
   if (storageStatus) {
     const totalItems = state.history.length
 
-    // localStorageから生テキストを取得してデータ容量を計算
-    const rawString = localStorage.getItem(DLT_HISTORY_KEY) || "[]"
+    // 生テキストを取得してデータ容量を計算
+    const rawString = JSON.stringify(globalState.history)
     // 文字列の長さ * 2バイト を 1024 で割って kB を算出（小数点第1位まで）
     const kilobytes = ((rawString.length * 2) / 1024).toFixed(1)
 

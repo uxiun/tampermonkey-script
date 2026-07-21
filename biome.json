@@ -8,7 +8,10 @@
         "useExhaustiveDependencies": "info"
       },
       "suspicious": {
-        "useIterableCallbackReturn": "warn"
+        "useIterableCallbackReturn": "info"
+      },
+      "style": {
+        "useImportType": "ignore"
       }
     }
   },
