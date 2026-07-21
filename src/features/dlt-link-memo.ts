@@ -603,24 +603,30 @@ export function renderWidget(state: AppState) {
   if (!state.isWidgetActive) return
 
   // ==========================================
-  // 💡 【新設】総件数・容量・追加件数のリアルタイム計算と描画
+  // 💡 総件数・直近7日間の更新件数・直近追加件数のリアルタイム描画
   // ==========================================
   const storageStatus = document.getElementById("dlt-storage-status")
   if (storageStatus) {
     const totalItems = state.history.length
 
-    // 生テキストを取得してデータ容量を計算
-    const rawString = JSON.stringify(globalState.history)
-    // 文字列の長さ * 2バイト を 1024 で割って kB を算出（小数点第1位まで）
-    const kilobytes = ((rawString.length * 2) / 1024).toFixed(1)
+    // 直近 7 日間（7 * 24 * 60 * 60 * 1000 ms）のタイムスタンプ境界を算出
+    const ONE_WEEK_MS = 7 * 24 * 60 * 60 * 1000
+    const weekAgoThreshold = Date.now() - ONE_WEEK_MS
 
-    // 「+n」の文字列を組み立て（0件より多ければプラス表記、なければ空）
+    // at (36進数) をデコードして直近7日以内に更新された件数をカウント
+    const recentWeeklyCount = state.history.filter(link => {
+      if (!link.at) return false
+      const timeMs = parseInt(link.at, 36)
+      return timeMs >= weekAgoThreshold
+    }).length
+
     const plusText =
       state.lastAddedCount > 0
-        ? ` <span style="color: #2ecc71; font-weight: bold;">+${state.lastAddedCount}</span>`
+        ? ` <span style="color: #a6e3a1; font-weight: bold;">+${state.lastAddedCount}</span>`
         : ""
 
-    storageStatus.innerHTML = `${totalItems} items (${kilobytes} kB)${plusText}`
+    // 表示例: "1250 items (42 in 7d) +3"
+    storageStatus.innerHTML = `今週 ${recentWeeklyCount} / ${totalItems} ${plusText}`
   }
 
   const inputEl = document.getElementById(

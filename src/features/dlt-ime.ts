@@ -324,21 +324,16 @@ class InlineSuggestPopup {
     Object.assign(this.el.style, {
       position: "fixed",
       zIndex: "2147483647",
-      // background: "#1e1e2e",
       background: "transparent",
-      color: "#cdd6f4",
-      // border: "1px solid #45475a",
-      // borderRadius: "6px",
-      // boxShadow: "0 4px 12px rgba(0,0,0,0.5)",
       border: "none",
       boxShadow: "none",
       padding: "4px",
       display: "none",
-      // maxHeight: "200px",
-      maxWidth: "max(50%, 20em)",
+      maxWidth: "520px", // 💡 横方向に敷き詰めるための適切な最大幅
+      maxHeight: "45vh",
       overflowY: "auto",
       fontFamily: "monospace",
-      fontSize: "16px",
+      fontSize: "13px",
     })
     document.body.appendChild(this.el)
   }
@@ -347,71 +342,66 @@ class InlineSuggestPopup {
     coords: { top: number; left: number },
     candidates: PostLink[],
     selectedIndex: number,
-    optionNumbers: number,
+    _optionNumbers: number,
   ) {
     if (candidates.length === 0) {
       this.hide()
       return
     }
-    // 1件あたり約26px (padding 4px*2 + line-height等) として計算
-    // 最大件数に応じた高さを設定しつつ、画面全体の45%（45vh）を超えないように制限して見切れを防ぐ
 
-    const estimatedHeight = optionNumbers * 26 + 8
-    this.el.style.maxHeight = `style` in this.el ? `style` : "" // 型エラー防止のダミー
+    // 💡 Flex-wrap で横向きレンガ状に敷き詰める設定
     Object.assign(this.el.style, {
       top: `${coords.top}px`,
       left: `${coords.left}px`,
-      display: "block",
+      display: "flex",
+      flexWrap: "wrap",
+      gap: "6px",
       maxHeight: "45vh",
-      // maxHeight: `min(${estimatedHeight}px, 45vh)`, // 縦幅を動的かつ安全に制限
     })
 
-    // dlt-ime.ts 内の InlineSuggestPopup.show メソッドのレンダリング部分
-
-    // IME側の history 配列からIDマップを作成
     const historyMap = new Map(imeState.history.map(l => [l.id, l]))
 
     this.el.innerHTML = candidates
       .map((cand, idx) => {
         const isSelected = idx === selectedIndex
 
-        // 💡 カード自体に背景・境界線・影をつけて浮遊させる！
-        const bg = isSelected ? "#1e1e2e" : "rgba(24, 24, 37, 0.85)"
-        const border = isSelected ? "1px solid #89b4fa" : "1px solid #313244"
+        const bg = isSelected ? "#313244" : "rgba(24, 24, 37, 0.88)"
+        const border = isSelected
+          ? "1px solid #89b4fa"
+          : "1px solid rgba(69, 71, 90, 0.6)"
         const boxShadow = isSelected
-          ? "0 8px 20px rgba(0,0,0,0.6)"
-          : "0 4px 10px rgba(0,0,0,0.3)"
+          ? "0 4px 14px rgba(137, 180, 250, 0.35)"
+          : "0 2px 6px rgba(0,0,0,0.3)"
 
-        // 親（fg）タイトルの取得
-        const fgTitles = (cand.fg || [])
+        // 親（fg）タイトルの取得（重複排除）
+        const rawFgTitles = (cand.fg || [])
           .map(fgId => historyMap.get(fgId)?.title)
-          .filter(Boolean)
-          .slice(0, 10)
+          .filter((title): title is string => Boolean(title))
+
+        const fgTitles = Array.from(new Set(rawFgTitles)).slice(0, 2)
 
         const fgHtml =
           fgTitles.length > 0
-            ? `<div style="font-size: 12px; color: #89b4fa; opacity: 0.9; margin-bottom: 1px;">
-          ${fgTitles.join("｜")}
-         </div>`
+            ? `<div style="font-size: 10px; color: #89b4fa; opacity: 0.9; margin-bottom: 2px; font-weight: bold; white-space: nowrap;">
+                ${fgTitles.join("｜")}
+               </div>`
             : ""
 
         return `
-            <div style="padding: 6px 10px; background: ${bg}; border: ${border}; border-radius: 6px; margin-bottom: 6px; box-shadow: ${boxShadow}; backdrop-filter: blur(4px); transition: all 0.1s ease;">
-              ${fgHtml}
-              <div style="display: flex; justify-content: space-between; align-items: center; gap: 12px;">
-                <span style="color: ${isSelected ? "#89b4fa" : "#cdd6f4"}; font-weight: ${isSelected ? "bold" : "normal"};">
-                  ${cand.title}
-                </span>
-                <span style="opacity: 0.5; font-size: 10px; font-family: monospace;">${linkIdText(cand)}</span>
-              </div>
+          <div style="flex: 0 1 auto; padding: 5px 10px; background: ${bg}; border: ${border}; border-radius: 6px; box-shadow: ${boxShadow}; backdrop-filter: blur(4px); transition: all 0.08s ease;">
+            ${fgHtml}
+            <div style="color: ${isSelected ? "#89b4fa" : "#cdd6f4"}; font-weight: ${isSelected ? "bold" : "normal"}; white-space: nowrap; font-size: 13px;">
+              ${cand.title}
             </div>
-          `
+          </div>
+        `
       })
       .join("")
 
+    // 選択中のチップへの自動スクロール追従
     const selectedEl = this.el.children[selectedIndex] as HTMLElement
     if (selectedEl) {
-      selectedEl.scrollIntoView({ block: "nearest" })
+      selectedEl.scrollIntoView({ block: "nearest", inline: "nearest" })
     }
   }
 
