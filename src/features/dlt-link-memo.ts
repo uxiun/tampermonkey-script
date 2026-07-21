@@ -4,6 +4,7 @@ import {
   DLT_DOCK_KEY,
   DLT_HISTORY_KEY,
   getAt,
+  MergeLinkResult,
   mergeLinksStorage,
   overwriteBackupLinks,
   PostLink,
@@ -111,8 +112,14 @@ export function startLinkMemo() {
     }
   })
 
-  window.addEventListener("dlt-history-updated", () => {
-    syncLocalStorage(globalState)
+  window.addEventListener("dlt-history-updated", (e: any) => {
+    const res: {
+      links: PostLink[]
+      result: MergeLinkResult
+    } = e.detail
+    if (result.inserted.length > 0)
+      globalState.lastAddedCount = result.inserted.length
+    globalState.history = res.links
     if (globalState.isWidgetActive) {
       renderWidget(globalState) // 即座に描画更新！
     }
@@ -281,7 +288,8 @@ export function startLinkMemo() {
         if (e.key === " " && state.searchQuery === "") {
           state.searchQuery = ""
           handleSearch("", state)
-          renderWidget(state)
+          executeLinkOperation(state.leftDock)
+          renderWidget(globalState)
           const input = document.getElementById(
             "dlt-search-input",
           ) as HTMLInputElement
@@ -289,7 +297,6 @@ export function startLinkMemo() {
             input.value = ""
             input.focus()
           }
-          executeLinkOperation(state.leftDock)
         }
         if (e.key === "Backspace" && state.searchQuery === "") {
           state.leftDock = []
@@ -438,9 +445,8 @@ export function startLinkMemo() {
           break
         case " ":
           executeLinkOperation(state.leftDock)
-          // state.leftDock = []
-          // state.isWidgetActive = false
-          break
+          renderWidget(globalState)
+          return
         case "Tab":
           await executeCopy(state.leftDock.reverse())
           state.leftDock = []

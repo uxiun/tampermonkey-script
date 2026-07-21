@@ -215,8 +215,11 @@ export function dltIME(option = defaultIMEOption) {
     "input",
     e => {
       const target = e.target as Element
-      if (!target || !target.matches("textarea.src")) return
-      imeState.target = target as HTMLTextAreaElement
+      if (!target) return
+      if (target.matches("textarea.src"))
+        imeState.target = target as HTMLTextAreaElement
+      if (target.matches("input#kw"))
+        imeState.target = target as HTMLInputElement
       handleImeLookup(true) // タイピング中フラグをON
     },
     true,

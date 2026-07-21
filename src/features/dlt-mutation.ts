@@ -24,8 +24,13 @@ export function watchDltPage() {
         ) {
           console.log("新規投稿")
           setTimeout(() => {
-            mergeLinksStorage(DLT_HISTORY_KEY, getAllMyLinkFromPage())
-            window.dispatchEvent(new CustomEvent("dlt-history-updated"))
+            const res = mergeLinksStorage(
+              DLT_HISTORY_KEY,
+              getAllMyLinkFromPage(),
+            )
+            window.dispatchEvent(
+              new CustomEvent("dlt-history-updated", { detail: res }),
+            )
           }, 500)
           return
         }
@@ -33,14 +38,47 @@ export function watchDltPage() {
         if (document.activeElement?.matches("input#kw")) {
           console.log("全知検索")
           setTimeout(() => {
-            mergeLinksStorage(DLT_HISTORY_KEY, getAllMyLinkFromPage())
-            window.dispatchEvent(new CustomEvent("dlt-history-updated"))
+            const res = mergeLinksStorage(
+              DLT_HISTORY_KEY,
+              getAllMyLinkFromPage(),
+            )
+            window.dispatchEvent(
+              new CustomEvent("dlt-history-updated", { detail: res }),
+            )
           }, 300)
         }
       }
     },
-    { capture: true },
+    true,
   ) // ←ここが重要：サイト側の処理より先に実行する
+
+  const observer = new MutationObserver((mutations: MutationRecord[]) => {
+    for (const mutation of mutations) {
+      if (mutation.type === "childList" && mutation.addedNodes.length > 0) {
+        if (
+          Array.from(mutation.addedNodes).some(
+            node => node instanceof HTMLElement && node.matches(".pg"),
+          )
+        ) {
+          console.log("mutation! .pg")
+          const res = mergeLinksStorage(DLT_HISTORY_KEY, getAllMyLinkFromPage())
+          if (
+            res.result.inserted.length > 0 ||
+            res.result.moved.length > 0 ||
+            res.result.updated.length > 0
+          )
+            window.dispatchEvent(
+              new CustomEvent("dlt-history-updated", { detail: res }),
+            )
+        }
+      }
+    }
+  })
+
+  observer.observe(document.body, {
+    subtree: true,
+    childList: true,
+  })
 }
 
 function tryMutation() {
