@@ -13,6 +13,19 @@ export interface PostLink {
   use?: number // 使用回数
   fg?: string[] // 前景=親ID
   bg?: string[] // 後景=子ID
+  fgc?: number
+  bgc?: number
+}
+
+export interface LinkUpdate {
+  link: PostLink
+  update: Inserted | Modify
+}
+type Inserted = { type: "inserted" }
+type Modify = {
+  type: "modify"
+  title: boolean
+  bgfg: boolean
 }
 
 export const getAt = () => Date.now().toString(36)
@@ -29,7 +42,10 @@ export const useCount = (l: PostLink) =>
   l.use ? { ...l, use: l.use + 1 } : { ...l, use: 1 }
 
 export const postLinkText = (postLink: PostLink) =>
-  `{${postLink.title} K#${removePrefix(DLT_MY_ID, postLink.id)}}`
+  `{${postLink.title} ${linkIdText(postLink)}}`
+
+export const linkIdText = (link: PostLink) =>
+  `K#${removePrefix(DLT_MY_ID, link.id)}`
 
 export const postLinkTextList = (links: PostLink[]) =>
   links.map(postLinkText).join("")

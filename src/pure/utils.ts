@@ -53,3 +53,13 @@ export function padSpacesAroundUrl(text: string) {
     return result
   })
 }
+
+// 2つの文字列配列(fg/bg)に差分があるかチェックするヘルパー
+export function hasArrayChanged(
+  arr1: string[] = [],
+  arr2: string[] = [],
+): boolean {
+  if (arr1.length !== arr2.length) return true
+  const set1 = new Set(arr1)
+  return arr2.some(id => !set1.has(id))
+}

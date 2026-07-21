@@ -5,6 +5,7 @@ import {
   DLT_MY_ID,
   getHistoryFromLocalStorage,
   getLinksFromLocalStorage,
+  linkIdText,
   mergeLinksFast,
   mergeLinksStorage,
   PostLink,
@@ -145,7 +146,7 @@ export function dltIME(option = defaultIMEOption) {
   syncIDB(imeState)
 
   setupTabSyncListener(async diff => {
-    const m = await mergeLinksToIDB(diff, imeState.history)
+    const m = mergeLinksFast(imeState.history, diff)
     imeState.history = m.links
 
     if (!imeState.isActive || !imeState.target) return
@@ -288,12 +289,15 @@ export function dltIME(option = defaultIMEOption) {
           imeState.isActive = false
           inlinePopup.hide()
 
-          const { links } = mergeLinksStorage(DLT_DOCK_KEY, [
-            useCount(selected),
-          ])
+          const updatedSelected = useCount(selected)
+          const { links } = mergeLinksStorage(DLT_DOCK_KEY, [updatedSelected])
           window.dispatchEvent(
             new CustomEvent("dlt-dock-updated", { detail: links }),
           )
+
+          mergeLinksToIDB([updatedSelected], imeState.history).then(m => {
+            imeState.history = m.links
+          })
         }
         return
       }
@@ -320,24 +324,28 @@ class InlineSuggestPopup {
     Object.assign(this.el.style, {
       position: "fixed",
       zIndex: "2147483647",
-      background: "#1e1e2e",
+      // background: "#1e1e2e",
+      background: "transparent",
       color: "#cdd6f4",
-      border: "1px solid #45475a",
-      borderRadius: "6px",
-      boxShadow: "0 4px 12px rgba(0,0,0,0.5)",
+      // border: "1px solid #45475a",
+      // borderRadius: "6px",
+      // boxShadow: "0 4px 12px rgba(0,0,0,0.5)",
+      border: "none",
+      boxShadow: "none",
       padding: "4px",
       display: "none",
       // maxHeight: "200px",
+      maxWidth: "max(50%, 20em)",
       overflowY: "auto",
       fontFamily: "monospace",
-      fontSize: "12px",
+      fontSize: "16px",
     })
     document.body.appendChild(this.el)
   }
 
   show(
     coords: { top: number; left: number },
-    candidates: any[],
+    candidates: PostLink[],
     selectedIndex: number,
     optionNumbers: number,
   ) {
@@ -347,23 +355,57 @@ class InlineSuggestPopup {
     }
     // 1件あたり約26px (padding 4px*2 + line-height等) として計算
     // 最大件数に応じた高さを設定しつつ、画面全体の45%（45vh）を超えないように制限して見切れを防ぐ
+
     const estimatedHeight = optionNumbers * 26 + 8
     this.el.style.maxHeight = `style` in this.el ? `style` : "" // 型エラー防止のダミー
     Object.assign(this.el.style, {
       top: `${coords.top}px`,
       left: `${coords.left}px`,
       display: "block",
-      maxHeight: `min(${estimatedHeight}px, 45vh)`, // 縦幅を動的かつ安全に制限
+      maxHeight: "45vh",
+      // maxHeight: `min(${estimatedHeight}px, 45vh)`, // 縦幅を動的かつ安全に制限
     })
+
+    // dlt-ime.ts 内の InlineSuggestPopup.show メソッドのレンダリング部分
+
+    // IME側の history 配列からIDマップを作成
+    const historyMap = new Map(imeState.history.map(l => [l.id, l]))
 
     this.el.innerHTML = candidates
       .map((cand, idx) => {
         const isSelected = idx === selectedIndex
-        const bg = isSelected ? "#89b4fa" : "transparent"
-        const fg = isSelected ? "#11111b" : "#cdd6f4"
-        return `<div style="padding: 4px 8px; background: ${bg}; color: ${fg}; border-radius: 4px; white-space: nowrap;">
-        ${cand.title} <span style="opacity: 0.6; font-size: 10px;">K#${cand.id}</span>
-      </div>`
+
+        // 💡 カード自体に背景・境界線・影をつけて浮遊させる！
+        const bg = isSelected ? "#1e1e2e" : "rgba(24, 24, 37, 0.85)"
+        const border = isSelected ? "1px solid #89b4fa" : "1px solid #313244"
+        const boxShadow = isSelected
+          ? "0 8px 20px rgba(0,0,0,0.6)"
+          : "0 4px 10px rgba(0,0,0,0.3)"
+
+        // 親（fg）タイトルの取得
+        const fgTitles = (cand.fg || [])
+          .map(fgId => historyMap.get(fgId)?.title)
+          .filter(Boolean)
+          .slice(0, 10)
+
+        const fgHtml =
+          fgTitles.length > 0
+            ? `<div style="font-size: 12px; color: #89b4fa; opacity: 0.9; margin-bottom: 1px;">
+          ${fgTitles.join("｜")}
+         </div>`
+            : ""
+
+        return `
+            <div style="padding: 6px 10px; background: ${bg}; border: ${border}; border-radius: 6px; margin-bottom: 6px; box-shadow: ${boxShadow}; backdrop-filter: blur(4px); transition: all 0.1s ease;">
+              ${fgHtml}
+              <div style="display: flex; justify-content: space-between; align-items: center; gap: 12px;">
+                <span style="color: ${isSelected ? "#89b4fa" : "#cdd6f4"}; font-weight: ${isSelected ? "bold" : "normal"};">
+                  ${cand.title}
+                </span>
+                <span style="opacity: 0.5; font-size: 10px; font-family: monospace;">${linkIdText(cand)}</span>
+              </div>
+            </div>
+          `
       })
       .join("")
 

@@ -16,16 +16,27 @@ type GetLinkElement = {
   el: Element | undefined | null
 }
 
-export const getLinkAuto = (el: Element | undefined | null): PostLink[] => {
+export const getLinkAuto = (
+  el: Element | undefined | null,
+): {
+  id: string
+  title: string
+}[] => {
   if (!el) return []
 
   if (el.nodeName === "ARTICLE" && el.classList.contains("oln")) {
     const id = el?.getAttribute("data-kno")?.slice(2)
-    const title = el
-      ?.querySelector(":scope > .ikon > .knm")
-      ?.getAttribute("data-src")
+    const te = el?.querySelector(":scope > .ikon > .knm")
 
-    return id && title ? [{ id, title }] : []
+    if (!te || !id) return []
+
+    // 「あれ」にも一応対応
+    if (te.classList.contains("unk")) return [{ id, title: "" }]
+
+    const title = te.getAttribute("data-src")
+    return title ? [{ id, title }] : []
+  } else if (el.classList.contains("bln")) {
+    return getLinkAuto(el.querySelector("article.mg.oln"))
   } else if (el.nodeName === "A") {
     const id = el?.getAttribute("href")?.split("KNo.")[1]
     const title = el?.getAttribute("data-src")
@@ -161,8 +172,71 @@ export const getLinkFromArticle = (limitOwn = true): PostLink[] =>
     ),
   ).flatMap(el => getLink({ el, type: "article" }))
 
-// DOM to Element
+export interface ScrapeResult {
+  main?: PostLink
+  list: PostLink[] // 前景後景どちらも最新10件まで見える
+  fg: PostLink[] // listの輪郭の前景
+  bg: PostLink[] // listの輪郭の後景
+}
 
-const getArticles = () => {
-  return document.querySelectorAll(".pg > .bln article.mg.oln")
+export const scrapeWithFgBg = (limitOwn = true) => {
+  const r: ScrapeResult = {
+    list: [],
+    fg: [],
+    bg: [],
+  }
+
+  const items = getListItems()
+
+  for (const bln of items) {
+    const [current] = getLinkAuto(bln)
+
+    const fg = Array.from(
+      bln.querySelectorAll(`:scope > .oln.ikon${limitOwn ? ".I" : ""}`),
+    )
+      .flatMap(getLinkAuto)
+      .map(l => ({ ...l, bg: [current.id] }))
+    const bg = Array.from(
+      bln.querySelectorAll(`.bg > .oln.ikon${limitOwn ? ".I" : ""}`),
+    )
+      .flatMap(getLinkAuto)
+      .map(l => ({ ...l, fg: [current.id] }))
+
+    const cnt = fgBgCount(bln)
+
+    r.list.push({
+      ...current,
+      fg: fg.map(l => l.id),
+      bg: bg.map(l => l.id),
+      fgc: cnt.fg,
+      bgc: cnt.bg,
+    })
+
+    r.fg = [...r.fg, ...fg]
+    r.bg = [...r.bg, ...bg]
+  }
+
+  const el = document.querySelector(".bln.hng")
+  if (!el) return r
+
+  const [main] = getLinkAuto(el)
+  r.main = main
+  const listIds = r.list.map(l => l.id)
+  if (el.classList.contains("top")) r.main.bg = listIds
+  else if (el.classList.contains("btm")) r.main.fg = listIds
+  return r
+}
+
+const fgBgCount = (bln: Element) => {
+  const fgCount = bln.querySelector(":scope > .cnt")?.textContent?.slice(1, -1)
+  const bgCount = bln.querySelector(".bg > .cnt")?.textContent?.slice(1, -1)
+
+  return {
+    fg: fgCount ? Number(fgCount) : undefined,
+    bg: bgCount ? Number(bgCount) : undefined,
+  }
+}
+
+const getListItems = (limitOwn = true) => {
+  return document.querySelectorAll(`.pg > .bln${limitOwn ? ".I" : ""}`)
 }

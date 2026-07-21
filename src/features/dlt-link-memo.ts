@@ -1,6 +1,7 @@
 import {
   getAllLinksFromIDB,
   mergeLinksToIDB,
+  scrapeAndMergeFgBg,
   setupTabSyncListener,
 } from "./dlt-db"
 import { getAllMyLinkFromPage } from "./dlt-dom"
@@ -9,7 +10,9 @@ import {
   DLT_DOCK_KEY,
   DLT_HISTORY_KEY,
   getAt,
+  linkIdText,
   MergeLinkResult,
+  mergeLinksFast,
   overwriteBackupLinks,
   PostLink,
   postLinkText,
@@ -62,8 +65,9 @@ export async function startLinkMemo() {
   globalState.history = await getAllLinksFromIDB()
 
   // 2. タブ間同期リスナーをセット（他タブで変更があったら再読み込み）
-  setupTabSyncListener(async diff => {
-    const m = await mergeLinksToIDB(diff, globalState.history)
+  // 💡【重要】他タブからの更新は、メモリ上でのみマージする（再保存による無限ループを遮断！）
+  setupTabSyncListener(diff => {
+    const m = mergeLinksFast(globalState.history, diff)
     globalState.history = m.links
     if (globalState.isWidgetActive) renderWidget(globalState)
 
@@ -72,17 +76,11 @@ export async function startLinkMemo() {
   })
 
   // 3. 画面内からの自動収集リンクをIDBにマージ
-  const scrapedLinks = getAllMyLinkFromPage()
-  if (scrapedLinks.length > 0) {
-    const { links, result } = await mergeLinksToIDB(
-      scrapedLinks,
-      globalState.history,
-    )
-    globalState.history = links
-    globalState.lastAddedCount = result.inserted.length
+  const scraped = await scrapeAndMergeFgBg(true, globalState.history)
+  globalState.history = scraped.links
+  globalState.lastAddedCount = scraped.result.inserted.length
 
-    renderWidget(globalState)
-  }
+  renderWidget(globalState)
 
   // 💡【重要】リロード対策：左の台（leftDock）の状態も localStorage から復元する！
   globalState.leftDock = JSON.parse(localStorage.getItem(DLT_DOCK_KEY) || "[]")
@@ -327,16 +325,21 @@ export async function startLinkMemo() {
           e.stopPropagation()
           const target = currentItems[state.cursorIndex]
           if (target) {
-            const targetWithAt = useCount({ ...target, at: getAt() })
-            state.leftDock.push(targetWithAt)
+            const targetUpdated = useCount({ ...target, at: getAt() })
+            state.leftDock.push(targetUpdated)
             // 💡 localStorage にも保存して他タブに通知
             localStorage.setItem(DLT_DOCK_KEY, JSON.stringify(state.leftDock))
-            const history = [
-              targetWithAt,
-              ...state.history.filter(link => link.id !== target.id),
-            ]
-            state.history = history
-            localStorage.setItem(DLT_HISTORY_KEY, JSON.stringify(history))
+
+            mergeLinksToIDB([targetUpdated], state.history).then(
+              m => (state.history = m.links),
+            )
+
+            // const history = [
+            //   targetUpdated,
+            //   ...state.history.filter(link => link.id !== target.id),
+            // ]
+            // state.history = history
+            // localStorage.setItem(DLT_HISTORY_KEY, JSON.stringify(history))
 
             state.searchQuery = ""
             state.currentPage = 0
@@ -447,16 +450,21 @@ export async function startLinkMemo() {
             state.leftDock = state.leftDock.filter(l => l.id !== target.id)
             localStorage.setItem(DLT_DOCK_KEY, JSON.stringify(state.leftDock))
           } else {
-            const targetWithAt = useCount({ ...target, at: getAt() })
-            state.leftDock.push(targetWithAt)
+            const targetUpdated = useCount({ ...target, at: getAt() })
+            state.leftDock.push(targetUpdated)
             // 💡 保存＆同期
             localStorage.setItem(DLT_DOCK_KEY, JSON.stringify(state.leftDock))
-            const history = [
-              targetWithAt,
-              ...state.history.filter(link => link.id !== target.id),
-            ]
-            state.history = history
-            localStorage.setItem(DLT_HISTORY_KEY, JSON.stringify(history))
+
+            mergeLinksToIDB([targetUpdated], state.history).then(
+              m => (state.history = m.links),
+            )
+
+            // const history = [
+            //   targetUpdated,
+            //   ...state.history.filter(link => link.id !== target.id),
+            // ]
+            // state.history = history
+            // localStorage.setItem(DLT_HISTORY_KEY, JSON.stringify(history))
           }
           break
         }
@@ -520,17 +528,17 @@ export function renderWidget(state: AppState) {
     widget.id = "dlt-link-memo-widget"
 
     widget.innerHTML = `
-      <div style="background: #34495e; padding: 8px; display: flex; align-items: center; gap: 8px; height: 36px; box-sizing: border-box;">
+      <div style="background: #181825; padding: 8px; display: flex; align-items: center; gap: 8px; height: 36px; box-sizing: border-box; border-bottom: 1px solid #313244;">
         <input id="dlt-search-input" type="text" placeholder="Type to search..." autocomplete="off"
-          style="background: #1a252f; border: 1px solid #3498db; color: white; padding: 4px 8px; border-radius: 4px; flex: 1; outline: none; font-size: 13px;" />
-
-        <span id="dlt-storage-status" style="font-size: 10px; color: #95a5a6; font-family: monospace; background: #1a252f; padding: 2px 6px; border-radius: 4px;"></span>
-
-        <span id="dlt-page-indicator" style="font-size: 11px; color: #bdc3c7; font-family: monospace;">1/1</span>
+          style="background: #1e1e2e; border: 1px solid #45475a; color: #cdd6f4; padding: 4px 8px; border-radius: 4px; flex: 1; outline: none; font-size: 12px;" />
+        <span id="dlt-storage-status" style="font-size: 10px; color: #a6adc8; font-family: monospace; background: #1e1e2e; padding: 2px 6px; border-radius: 4px;"></span>
+        <span id="dlt-page-indicator" style="font-size: 11px; color: #a6adc8; font-family: monospace;">1/1</span>
       </div>
       <div style="display: flex; flex: 1; overflow: hidden; height: calc(100% - 36px);">
-        <div id="dlt-dock-pane" style="width: 40%; background: #1e272e; border-right: 1px solid #3d4e5d; padding: 8px; overflow: hidden; box-sizing: border-box;"></div>
-        <div id="dlt-list-pane" style="width: 60%; padding: 8px; overflow: hidden; background: #2c3e50; box-sizing: border-box;"></div>
+        <!-- 💡 DOCKペイン（左）スクロール可能に -->
+        <div id="dlt-dock-pane" style="width: 38%; background: #11111b; border-right: 1px solid #313244; padding: 8px; overflow-y: auto; box-sizing: border-box;"></div>
+        <!-- 💡 LISTペイン（右）スクロール可能に -->
+        <div id="dlt-list-pane" style="width: 62%; padding: 8px; overflow-y: auto; background: #181825; box-sizing: border-box;"></div>
       </div>
     `
 
@@ -584,12 +592,12 @@ export function renderWidget(state: AppState) {
   }
 
   widget.style.cssText = `
-    position: fixed; bottom: 20px; right: 20px; z-index: 20000000;
-    width: 450px; height: 340px; background: #2c3e50; color: #ecf0f1;
-    font-family: monospace; border-radius: 8px; box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+    position: fixed; bottom: 0px; right: 16px; z-index: 20000000;
+    width: 460px; height: min(500px, 50vh); background: #181825; color: #cdd6f4;
+    font-family: monospace; border-radius: 8px; boxShadow: 0 10px 30px rgba(0,0,0,0.6);
     display: ${state.isWidgetActive ? "flex" : "none"}; flex-direction: column;
-    overflow: hidden; border: 2px solid ${state.isSearching ? "#3498db" : "#f1c40f"};
-    opacity: 0.95; box-sizing: border-box;
+    overflow: hidden; border: 1px solid ${state.isSearching ? "#89b4fa" : "#45475a"};
+    opacity: 0.96; box-sizing: border-box;
   `
 
   if (!state.isWidgetActive) return
@@ -634,37 +642,70 @@ export function renderWidget(state: AppState) {
     pageIndicator.innerText = `${state.currentPage + 1}/${maxPage}`
   }
 
-  const dockPane = document.getElementById("dlt-dock-pane")
-  if (dockPane) {
-    dockPane.innerHTML = `
-      <div style="font-size: 11px; color: #e74c3c; font-weight: bold; margin-bottom: 6px;">[ DOCK ]</div>
-      ${state.leftDock.map(link => `<div style="font-size: 12px; margin-bottom: 4px; color: #2ecc71; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">⚓ ${postLinkText(link)}</div>`).join("")}
+  // 前景IDからタイトルを即座に引けるマップを作成（パフォーマンス確保）
+  const idToLinkMap = new Map(state.history.map(l => [l.id, l]))
+
+  const renderLinkItem = (link: PostLink, isSelected: boolean) => {
+    // 1. 前景（親）のタイトルを最大2〜3件抽出（IDからタイトルを逆引き）
+    const fgTitles = (link.fg || [])
+      .map(fgId => idToLinkMap.get(fgId)?.title || "")
+      .filter(s => s.length > 0)
+      .slice(0, 10)
+
+    const fgBadgeHtml =
+      fgTitles.length > 0
+        ? `<div style="font-size: 12px; color: #89b4fa; opacity: 0.85; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-bottom: 2px;">
+            ${fgTitles.join("｜")}
+           </div>`
+        : ""
+
+    return `
+      <div class="dlt-list-item" style="padding: 5px 8px; border-radius: 5px; margin-bottom: 4px;
+                  background: ${isSelected ? "#313244" : "rgba(255,255,255,0.02)"};
+                  border: 1px solid ${isSelected ? "#89b4fa" : "transparent"};
+                  transition: background 0.1s ease;">
+        ${fgBadgeHtml}
+
+        <div style="font-size: 16px; font-weight: ${isSelected ? "bold" : "normal"};
+                    color: ${isSelected ? "#89b4fa" : "#cdd6f4"};
+                    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+                    display: flex; align-items: center; justify-content: space-between; gap: 12px">
+          <span>${link.title}
+            ${link.use ? `<span style="font-size: 9px; opacity: 0.6; background: #11111b; padding: 1px 4px; border-radius: 3px; color: #f9e2af;">★${link.use}</span>` : ""}
+          </span>
+          <span style="font-size: 10px; font-family: monospace; opacity: .5">${linkIdText(link)}</span>
+        </div>
+      </div>
     `
   }
 
+  // DOCKペイン描画 ...
+  const dockPane = document.getElementById("dlt-dock-pane")
+  if (dockPane) {
+    dockPane.innerHTML = `
+      <div style="font-size: 10px; color: #f38ba8; font-weight: bold; margin-bottom: 6px;">[ DOCK ]</div>
+      ${state.leftDock.map(link => `<div style="font-size: 11px; margin-bottom: 4px; color: #a6e3a1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">⚓ ${postLinkText(link)}</div>`).join("")}
+    `
+  }
+
+  // LISTペイン描画 ...
   const listPane = document.getElementById("dlt-list-pane")
   if (listPane) {
-    // 👈 常にページングで切り出された10件だけを表示させる
     const rightItems = getPagedItems(state)
     listPane.innerHTML = `
-      <div style="font-size: 11px; color: #f1c40f; font-weight: bold; margin-bottom: 6px;">
+      <div style="font-size: 10px; color: #f9e2af; font-weight: bold; margin-bottom: 6px;">
         ${state.isSearching ? "[ SEARCH RESULTS ]" : "[ HISTORY ]"}
       </div>
-      ${rightItems
-        .map((link, idx) => {
-          const isSelected = idx === state.cursorIndex
-          return `
-          <div style="font-size: 12px; padding: 4px; border-radius: 3px; margin-bottom: 2px;
-                      background: ${isSelected ? "#34495e" : "transparent"};
-                      color: ${isSelected ? "#f1c40f" : "#ecf0f1"};
-                      font-weight: ${isSelected ? "bold" : "normal"};
-                      white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
-            ${postLinkText(link)}
-          </div>
-        `
-        })
-        .join("")}
+      ${rightItems.map((link, idx) => renderLinkItem(link, idx === state.cursorIndex)).join("")}
     `
+
+    // 💡【コア】選択中の項目へ自動スクロール追従させて見切れを解消！
+    const selectedEl = listPane.querySelectorAll(".dlt-list-item")[
+      state.cursorIndex
+    ] as HTMLElement
+    if (selectedEl) {
+      selectedEl.scrollIntoView({ block: "nearest" })
+    }
   }
 }
 

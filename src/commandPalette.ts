@@ -1,5 +1,6 @@
 // src/commandPalette.ts
 
+import { deleteAllFgBg } from "./features/dlt-db"
 import { getLinkMainPage, getLinkOnFgBgPage } from "./features/dlt-dom"
 import {
   DLT_HISTORY_KEY,
@@ -55,6 +56,10 @@ async function executeCommand(val: string) {
   console.log("実行するコマンド:", val)
 
   switch (val) {
+    case "fgbg.delete":
+      await deleteAllFgBg()
+      break
+
     case "migrate idb":
       const ok = confirm("LocalStorageからIndexedDBに移行しますか？")
       if (ok) migrateLocalStorageToIDB()
