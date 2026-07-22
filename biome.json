@@ -11,7 +11,7 @@
         "useIterableCallbackReturn": "info"
       },
       "style": {
-        "useImportType": "ignore"
+        "useImportType": "off"
       }
     }
   },

@@ -278,7 +278,7 @@ export function searchLinks(query: string, links: PostLink[]) {
     }
 
     if (isMatch) {
-      totalScore += link.use ?? 0
+      // totalScore += link.use ?? 0 // 使用回数ボーナス
       results.push({ link, score: totalScore })
     }
   }

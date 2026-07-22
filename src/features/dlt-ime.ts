@@ -204,8 +204,17 @@ export function dltIME(option = defaultIMEOption) {
   // 2. キャレット位置移動の監視
   const checkCaretBoundary = (e: Event) => {
     if (!imeState.isActive) return
+
+    const activeEl = e.target
+    const isInput =
+      activeEl &&
+      ((activeEl as HTMLElement).tagName === "INPUT" ||
+        (activeEl as HTMLElement).tagName === "TEXTAREA" ||
+        (activeEl as HTMLElement).isContentEditable)
+    if (!isInput) return
+
     const target = e.target as HTMLTextAreaElement | HTMLInputElement
-    if (!target || !target.matches("textarea.src")) return
+    console.log(target)
 
     // Tabキーのキーアップ時は境界チェックや再評価をスキップ（選択状態を守る）
     if (e instanceof KeyboardEvent && e.key === "Tab") return
@@ -329,8 +338,7 @@ class InlineSuggestPopup {
       boxShadow: "none",
       padding: "4px",
       display: "none",
-      maxWidth: "520px", // 💡 横方向に敷き詰めるための適切な最大幅
-      maxHeight: "45vh",
+      // maxWidth: "520px", // 💡 横方向に敷き詰めるための適切な最大幅
       overflowY: "auto",
       fontFamily: "monospace",
       fontSize: "13px",
@@ -344,19 +352,42 @@ class InlineSuggestPopup {
     selectedIndex: number,
     _optionNumbers: number,
   ) {
+    console.log(coords)
+
     if (candidates.length === 0) {
       this.hide()
       return
     }
 
+    // 画面全体の有効な横幅を取得（スクロールバーを含まない幅）
+    const client = {
+      width: document.documentElement.clientWidth,
+      height: document.documentElement.clientHeight,
+    }
+    const maxWidth = client.width - coords.left - 16
+    const maxHeight = client.height - coords.top - 16
+
+    Object.assign(
+      this.el.style,
+      maxWidth < 200
+        ? {
+            right: "16px",
+            maxWidth: "200px",
+          }
+        : {
+            left: `${coords.left}px`,
+            maxWidth: `${maxWidth}px`,
+          },
+    )
+
     // 💡 Flex-wrap で横向きレンガ状に敷き詰める設定
     Object.assign(this.el.style, {
       top: `${coords.top}px`,
-      left: `${coords.left}px`,
       display: "flex",
       flexWrap: "wrap",
       gap: "6px",
-      maxHeight: "45vh",
+      maxHeight: `${maxHeight}px`,
+      alignItems: "flex-end",
     })
 
     const historyMap = new Map(imeState.history.map(l => [l.id, l]))
@@ -388,9 +419,9 @@ class InlineSuggestPopup {
             : ""
 
         return `
-          <div style="flex: 0 1 auto; padding: 5px 10px; background: ${bg}; border: ${border}; border-radius: 6px; box-shadow: ${boxShadow}; backdrop-filter: blur(4px); transition: all 0.08s ease;">
+          <div style="flex: 0 1 auto; min-width: 0; overflow: hidden; padding: 5px 7px; background: ${bg}; border: ${border}; border-radius: 6px; box-shadow: ${boxShadow}; backdrop-filter: blur(4px); transition: all 0.08s ease; max-width: 100%;">
             ${fgHtml}
-            <div style="color: ${isSelected ? "#89b4fa" : "#cdd6f4"}; font-weight: ${isSelected ? "bold" : "normal"}; white-space: nowrap; font-size: 13px;">
+            <div style="color: ${isSelected ? "#89b4fa" : "#cdd6f4"}; font-weight: ${isSelected ? "bold" : "normal"}; white-space: nowrap; text-overflow: ellipsis; overflow: hidden; font-size: 13px;">
               ${cand.title}
             </div>
           </div>
@@ -414,6 +445,8 @@ function getPopupPosition(
   inputEl: HTMLTextAreaElement | HTMLInputElement,
   startPos: number,
 ) {
+  console.log({ inputEl, startPos })
+
   let mirrorEl = document.getElementById("dlt-ime-mirrorEl")
   if (!mirrorEl) {
     mirrorEl = document.createElement("div")
@@ -462,14 +495,23 @@ function getPopupPosition(
     marker.textContent = "{"
     mirrorEl.appendChild(marker)
 
-    return {
-      top:
-        rect.top +
-        marker.offsetTop +
-        parseFloat(styles.lineHeight || "20") +
-        inputEl.scrollTop,
-      left: rect.left + marker.offsetLeft - inputEl.scrollLeft,
-    }
+    return inputEl.getAttribute("id") === "kw"
+      ? {
+          top:
+            rect.top +
+            marker.offsetTop +
+            (parseFloat(styles.lineHeight) || 20) +
+            inputEl.scrollTop,
+          left: rect.left + marker.offsetLeft - inputEl.scrollLeft,
+        }
+      : {
+          top:
+            rect.top +
+            marker.offsetTop +
+            (parseFloat(styles.lineHeight) || 20) +
+            inputEl.scrollTop,
+          left: rect.left + marker.offsetLeft - inputEl.scrollLeft,
+        }
   }
 
   return _getPopupPosition(inputEl, startPos)

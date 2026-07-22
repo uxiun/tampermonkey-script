@@ -371,7 +371,7 @@ export async function startLinkMemo() {
       // -------------------------------------------------------------
       // パターンB：右の自動履歴欄に疑似フォーカス中の場合
       // -------------------------------------------------------------
-      if (e.key === "/") {
+      if (e.key === "/" || e.key === "d" || e.key === "l") {
         e.preventDefault()
         e.stopPropagation()
         state.isSearching = true

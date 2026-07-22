@@ -12,11 +12,11 @@ export const KEYS = {
 }
 
 const vimiumcKeys = {
-  dlt: "fgjk.m",
+  dlt: "fgjk.mzo",
 }
 
 const autocontrolKeys = {
-  dlt: "v",
+  dlt: "wv",
 }
 
 export const keyBlacklist =
