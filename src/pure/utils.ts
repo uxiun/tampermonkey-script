@@ -63,3 +63,16 @@ export function hasArrayChanged(
   const set1 = new Set(arr1)
   return arr2.some(id => !set1.has(id))
 }
+
+export const isInput = () => {
+  const activeEl = document.activeElement
+  return Boolean(
+    activeEl &&
+      (activeEl.tagName === "INPUT" ||
+        activeEl.tagName === "TEXTAREA" ||
+        (activeEl as HTMLElement).isContentEditable),
+  )
+}
+export const isTopPage = () =>
+  window.location.origin + "/" === window.location.href ||
+  window.location.origin === window.location.href

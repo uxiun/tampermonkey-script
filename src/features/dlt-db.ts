@@ -138,11 +138,8 @@ const updateListLinks = (src: LinkMap) => (listLinks: PostLink[]) => {
 }
 
 function updateScrapedFgBg(r: ScrapeResult, cache: PostLink[]) {
-  console.log("updateScrapedFgBg from", r)
   const linkMap = new Map(cache.map(l => [l.id, l]))
-
   let result: LinkUpdate[] = []
-
   if (r.main) result = updateListLinks(linkMap)([r.main])
 
   const updater = updateFgBgLinks(linkMap)
@@ -156,8 +153,6 @@ function updateScrapedFgBg(r: ScrapeResult, cache: PostLink[]) {
     ...updater(r.fg.filter(notIn)),
     ...updater(r.bg.filter(notIn)),
   ]
-
-  console.log("updateScrapedFgBg result", result)
 
   return result
 }
@@ -175,6 +170,7 @@ export async function mergeFgBgFast(
     inserted: [],
     moved: [],
     updated: [],
+    unchanged: [],
   }
 
   const fgbgUpdated: PostLink[] = []

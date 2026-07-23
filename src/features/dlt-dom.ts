@@ -67,6 +67,17 @@ type GetLinkTargetMainPage = "list" | "listsFg" | "listsBg"
 
 type GetLinkTarget = GetLinkTargetMainPage | "opening" | "openingOtherSide"
 
+export type DltPageType = "home" | "fg" | "bg"
+export const getPageType = (): DltPageType | undefined => {
+  if (window.location.hostname !== "dlt.kitetu.com") return
+  const url = new URL(window.location.href)
+  const params = new URLSearchParams(window.location.search)
+  if (params.has("fg")) return "fg"
+  if (params.has("bg")) return "bg"
+  if (url.pathname.startsWith("/KNo.")) return "fg"
+  return "home"
+}
+
 export const getAllMyLinkFromPage = () => {
   const params = new URLSearchParams(window.location.search)
   const links =
@@ -237,6 +248,6 @@ const fgBgCount = (bln: Element) => {
   }
 }
 
-const getListItems = (limitOwn = true) => {
+export const getListItems = (limitOwn = true) => {
   return document.querySelectorAll(`.pg > .bln${limitOwn ? ".I" : ""}`)
 }

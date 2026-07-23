@@ -38,6 +38,51 @@ export const sortByAt = (a: PostLink, b: PostLink) => {
   return 0
 }
 
+export interface RecentRangeOption {
+  startDaysAgo: number // 何日前から（例: 7 = 7日前から）
+  endDaysAgo?: number // 何日前まで（例: 0 = 今日まで。指定しなければ現在時刻まで）
+  dayStartHour?: number // 一日の始まりの時刻（例: 4 = 午前4時更新。デフォルト 4）
+}
+
+/**
+ * ソシャゲ式の日付境界（例: 朝4時更新）に基づいて指定範囲内のリンクを取得する
+ *
+ * @example
+ * getRecentLinks(links, 7)         // 直近7日間（7年前の朝4時〜現在）
+ * getRecentLinks(links, 1, 0)      // 昨日一日分（昨日の朝4時〜今日の朝4時）
+ * getRecentLinks(links, 0)         // 今日一日分（今日の朝4時〜現在）
+ */
+export function getRecentLinks(
+  links: PostLink[],
+  startDaysAgo: number,
+  endDaysAgo?: number,
+  dayStartHour = 4,
+): PostLink[] {
+  const now = new Date()
+
+  // 1. 今日の「日付変更線（例: 朝4:00）」のミリ秒タイムスタンプを算出
+  // （現在時刻から dayStartHour 分を引いて「論理的な今日」の日付を取得）
+  const logicalToday = new Date(now.getTime() - dayStartHour * 60 * 60 * 1000)
+  logicalToday.setHours(dayStartHour, 0, 0, 0)
+  const todayBoundaryMs = logicalToday.getTime()
+
+  // 2. 開始時刻（startDaysAgo 前の朝4:00）
+  const startMs = todayBoundaryMs - startDaysAgo * 24 * 60 * 60 * 1000
+
+  // 3. 終了時刻（指定がなければ「現在時刻 Date.now()」、指定があれば「endDaysAgo 前の朝4:00」）
+  const endMs =
+    endDaysAgo !== undefined
+      ? todayBoundaryMs - endDaysAgo * 24 * 60 * 60 * 1000
+      : Date.now()
+
+  // 4. 範囲内のリンクをフィルタリング
+  return links.filter(link => {
+    if (!link.at) return false
+    const timeMs = parseInt(link.at, 36)
+    return timeMs >= startMs && timeMs < endMs
+  })
+}
+
 export const useCount = (l: PostLink) =>
   l.use ? { ...l, use: l.use + 1 } : { ...l, use: 1 }
 
@@ -72,6 +117,7 @@ export type MergeLinkResult = {
   inserted: PostLink[]
   updated: PostLink[]
   moved: PostLink[]
+  unchanged: PostLink[]
 }
 
 export function mergeLinksStorage(
@@ -89,6 +135,7 @@ export function mergeLinksStorage(
         inserted: [],
         updated: [],
         moved: [],
+        unchanged: [],
       },
     }
 
@@ -106,14 +153,15 @@ export function mergeLinksFast(
   if (newLinks.length === 0) {
     return {
       links: currentHistory,
-      result: { inserted: [], updated: [], moved: [] },
+      result: { inserted: [], updated: [], moved: [], unchanged: [] },
     }
   }
 
-  const result = {
-    inserted: [] as PostLink[],
-    updated: [] as PostLink[],
-    moved: [] as PostLink[],
+  const result: MergeLinkResult = {
+    inserted: [],
+    updated: [],
+    moved: [],
+    unchanged: [],
   }
 
   const currentTime = getAt()
@@ -141,6 +189,7 @@ export function mergeLinksFast(
         if (dup.has(newLink.id))
           return false // 既存履歴の中で被ってる不具合
         else {
+          result.unchanged.push(newLink)
           dup.add(newLink.id)
           return true
         }

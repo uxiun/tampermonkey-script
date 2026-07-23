@@ -4,12 +4,12 @@ import {
   scrapeAndMergeFgBg,
   setupTabSyncListener,
 } from "./dlt-db"
-import { getAllMyLinkFromPage } from "./dlt-dom"
 import {
   backupLinks,
   DLT_DOCK_KEY,
   DLT_HISTORY_KEY,
   getAt,
+  getRecentLinks,
   linkIdText,
   MergeLinkResult,
   mergeLinksFast,
@@ -304,7 +304,11 @@ export async function startLinkMemo() {
           state.searchQuery = ""
           handleSearch("", state)
           executeLinkOperation(state.leftDock)
-          renderWidget(globalState)
+
+          const m = await scrapeAndMergeFgBg(true, state.history)
+          state.history = m.links
+
+          renderWidget(state)
           const input = document.getElementById(
             "dlt-search-input",
           ) as HTMLInputElement
@@ -330,9 +334,9 @@ export async function startLinkMemo() {
             // 💡 localStorage にも保存して他タブに通知
             localStorage.setItem(DLT_DOCK_KEY, JSON.stringify(state.leftDock))
 
-            mergeLinksToIDB([targetUpdated], state.history).then(
-              m => (state.history = m.links),
-            )
+            mergeLinksToIDB([targetUpdated], state.history).then(m => {
+              state.history = m.links
+            })
 
             // const history = [
             //   targetUpdated,
@@ -455,9 +459,9 @@ export async function startLinkMemo() {
             // 💡 保存＆同期
             localStorage.setItem(DLT_DOCK_KEY, JSON.stringify(state.leftDock))
 
-            mergeLinksToIDB([targetUpdated], state.history).then(
-              m => (state.history = m.links),
-            )
+            mergeLinksToIDB([targetUpdated], state.history).then(m => {
+              state.history = m.links
+            })
 
             // const history = [
             //   targetUpdated,
@@ -472,11 +476,14 @@ export async function startLinkMemo() {
           state.leftDock = []
           localStorage.setItem(DLT_DOCK_KEY, JSON.stringify(state.leftDock))
           break
-        case " ":
+        case " ": {
           executeLinkOperation(state.leftDock)
           state.leftDock = []
           localStorage.setItem(DLT_DOCK_KEY, JSON.stringify(state.leftDock))
+          const m = await scrapeAndMergeFgBg(true, state.history)
+          state.history = m.links
           break
+        }
         case "Tab":
           await executeCopy(state.leftDock.reverse())
           state.leftDock = []
@@ -530,9 +537,9 @@ export function renderWidget(state: AppState) {
     widget.innerHTML = `
       <div style="background: #181825; padding: 8px; display: flex; align-items: center; gap: 8px; height: 36px; box-sizing: border-box; border-bottom: 1px solid #313244;">
         <input id="dlt-search-input" type="text" placeholder="Type to search..." autocomplete="off"
-          style="background: #1e1e2e; border: 1px solid #45475a; color: #cdd6f4; padding: 4px 8px; border-radius: 4px; flex: 1; outline: none; font-size: 12px;" />
-        <span id="dlt-storage-status" style="font-size: 10px; color: #a6adc8; font-family: monospace; background: #1e1e2e; padding: 2px 6px; border-radius: 4px;"></span>
-        <span id="dlt-page-indicator" style="font-size: 11px; color: #a6adc8; font-family: monospace;">1/1</span>
+          style="background: #1e1e2e; border: 1px solid #45475a; color: #cdd6f4; padding: 4px 8px; border-radius: 4px; flex: 1; outline: none; font-size: 16px;" />
+        <span id="dlt-storage-status" style="font-size: 12px; color: #a6adc8; font-family: monospace; background: #1e1e2e; padding: 2px 6px; border-radius: 4px;"></span>
+        <span id="dlt-page-indicator" style="font-size: 12px; color: #a6adc8; font-family: monospace;">1/1</span>
       </div>
       <div style="display: flex; flex: 1; overflow: hidden; height: calc(100% - 36px);">
         <!-- 💡 DOCKペイン（左）スクロール可能に -->
@@ -593,7 +600,7 @@ export function renderWidget(state: AppState) {
 
   widget.style.cssText = `
     position: fixed; bottom: 0px; right: 16px; z-index: 20000000;
-    width: 460px; height: min(500px, 50vh); background: #181825; color: #cdd6f4;
+    width: min(460px, 90%); height: min(500px, 50vh); background: #181825; color: #cdd6f4;
     font-family: monospace; border-radius: 8px; boxShadow: 0 10px 30px rgba(0,0,0,0.6);
     display: ${state.isWidgetActive ? "flex" : "none"}; flex-direction: column;
     overflow: hidden; border: 1px solid ${state.isSearching ? "#89b4fa" : "#45475a"};
@@ -607,18 +614,7 @@ export function renderWidget(state: AppState) {
   // ==========================================
   const storageStatus = document.getElementById("dlt-storage-status")
   if (storageStatus) {
-    const totalItems = state.history.length
-
-    // 直近 7 日間（7 * 24 * 60 * 60 * 1000 ms）のタイムスタンプ境界を算出
-    const ONE_WEEK_MS = 7 * 24 * 60 * 60 * 1000
-    const weekAgoThreshold = Date.now() - ONE_WEEK_MS
-
-    // at (36進数) をデコードして直近7日以内に更新された件数をカウント
-    const recentWeeklyCount = state.history.filter(link => {
-      if (!link.at) return false
-      const timeMs = parseInt(link.at, 36)
-      return timeMs >= weekAgoThreshold
-    }).length
+    const total = state.isSearching ? state.searchResults : state.history
 
     const plusText =
       state.lastAddedCount > 0
@@ -626,7 +622,7 @@ export function renderWidget(state: AppState) {
         : ""
 
     // 表示例: "1250 items (42 in 7d) +3"
-    storageStatus.innerHTML = `今週 ${recentWeeklyCount} / ${totalItems} ${plusText}`
+    storageStatus.innerHTML = `${getRecentLinks(total, 0).length}/日 ${getRecentLinks(total, 7).length}/週 / ${total.length} ${plusText}`
   }
 
   const inputEl = document.getElementById(
