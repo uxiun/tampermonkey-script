@@ -1,5 +1,6 @@
 import { removePrefix } from "@/pure/utils"
 import { getAllLinksFromIDB, saveLinksToIDB } from "./dlt-db"
+import { showToast } from "@/pure/component"
 
 export const DLT_HISTORY_KEY = "dlt-history"
 export const DLT_DOCK_KEY = "dlt-dock"
@@ -248,8 +249,9 @@ export const backupLinks = async (current?: PostLink[]) => {
 
   const res = await ACtl.saveFile(DLT_SAVE_PATH, JSON.stringify(m.links))
 
-  if (res) console.log("saved at", res)
-  else console.log("could not saved at", DLT_SAVE_PATH)
+  return res
+    ? `saved ${m.links.length} links at ${res}`
+    : `could not saved at ${DLT_SAVE_PATH}`
 }
 
 export const restoreLinks = async (current?: PostLink[]) => {
@@ -258,6 +260,7 @@ export const restoreLinks = async (current?: PostLink[]) => {
 
   // 一旦IDの重複を排除して全件結合する（Mapのキー特性を利用）
   const unionMap = new Map<string, PostLink>()
+  const newlyAdded: PostLink[] = []
 
   // 古いものから順にMapに突っ込むことで、新しい `at` を持つ方が最終的に上書き残るようにする
   // 1. まず現在のローカル履歴を突っ込む
@@ -274,6 +277,7 @@ export const restoreLinks = async (current?: PostLink[]) => {
       }
     } else {
       unionMap.set(l.id, l)
+      newlyAdded.push(l)
     }
   })
 
@@ -282,14 +286,11 @@ export const restoreLinks = async (current?: PostLink[]) => {
   // 💡 ここがコア： at 属性の降順（新しい順）で並び替える。at が無いものは末尾（過去）へ。
   mergedList.sort(sortByAt)
 
-  console.log(
-    "⚓ タイムスタンプベースで復元・ソート完了:",
-    mergedList.length,
-    "件",
-  )
-
   // localStorage.setItem(DLT_HISTORY_KEY, JSON.stringify(mergedList))
   await saveLinksToIDB(mergedList)
+  const msg = `${mergedList.length}件(+${newlyAdded.length})復元`
+  console.log(msg)
+  showToast(msg)
 
   return mergedList
 }

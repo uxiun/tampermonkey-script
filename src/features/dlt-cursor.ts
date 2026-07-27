@@ -1,4 +1,4 @@
-import { isInput, isTopPage } from "@/pure/utils"
+import { isInput } from "@/pure/utils"
 import { getPageType } from "./dlt-dom"
 
 export default function dltCursor() {
@@ -48,6 +48,6 @@ export default function dltCursor() {
         window.location.href = `/?kw=${query}`
       }
     },
-    true,
+    false,
   )
 }

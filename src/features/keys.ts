@@ -11,6 +11,10 @@ export const KEYS = {
   banned: "d   sleiruwo htcm ,zvxnya;qpb",
 }
 
+const siteShortcut = {
+  "dlt.kitetu.com": "nr/&",
+}
+
 const vimiumcKeys = {
   dlt: "fgjk.mzo",
 }
@@ -30,5 +34,3 @@ export const dltkeys = {
   easyL: keyBlacklist(vimiumcKeys.dlt + KEYS.r)("easiest"),
   easyR: keyBlacklist(vimiumcKeys.dlt + KEYS.l)("easiest"),
 }
-
-// ==========================================

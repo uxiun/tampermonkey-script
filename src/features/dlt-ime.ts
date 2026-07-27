@@ -246,7 +246,7 @@ export function dltIME(option = defaultIMEOption) {
       if (!target) return
       if (target.matches("textarea.src"))
         imeState.target = target as HTMLTextAreaElement
-      if (target.matches("input#kw"))
+      if (target.tagName === "INPUT")
         imeState.target = target as HTMLInputElement
       handleImeLookup(true) // タイピング中フラグをON
     },

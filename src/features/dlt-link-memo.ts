@@ -1,3 +1,4 @@
+import { showToast } from "@/pure/component"
 import {
   getAllLinksFromIDB,
   mergeLinksToIDB,
@@ -492,18 +493,23 @@ export async function startLinkMemo() {
         case "s":
           state.isWidgetActive = false
           break
-        case "b":
-          await backupLinks(state.history)
+        case "b": {
+          // backup
+          const msg = await backupLinks(state.history)
+          console.log(msg)
+          showToast(msg)
           break
-        case "r": {
+        }
+        case "y": {
+          // get
           const restored = await restoreLinks(state.history)
           console.log("restored links:", restored)
           state.history = restored
           break
         }
-        case "q": {
-          overwriteBackupLinks(state.history)
-        }
+        // case "q": {
+        //   overwriteBackupLinks(state.history)
+        // }
       }
 
       renderWidget(state)

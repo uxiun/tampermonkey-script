@@ -191,6 +191,7 @@ export interface ScrapeResult {
 }
 
 export const scrapeWithFgBg = (limitOwn = true) => {
+  console.log("limitOwn", limitOwn)
   const r: ScrapeResult = {
     list: [],
     fg: [],
@@ -227,7 +228,7 @@ export const scrapeWithFgBg = (limitOwn = true) => {
     r.bg = [...r.bg, ...bg]
   }
 
-  const el = document.querySelector(".bln.hng")
+  const el = document.querySelector(`.bln.hng${limitOwn ? ".I" : ""}`)
   if (!el) return r
 
   const [main] = getLinkAuto(el)
@@ -235,6 +236,7 @@ export const scrapeWithFgBg = (limitOwn = true) => {
   const listIds = r.list.map(l => l.id)
   if (el.classList.contains("top")) r.main.bg = listIds
   else if (el.classList.contains("btm")) r.main.fg = listIds
+  console.log("scrapeWithFgBg:", r)
   return r
 }
 
