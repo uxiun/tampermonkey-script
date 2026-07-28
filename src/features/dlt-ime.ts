@@ -524,25 +524,37 @@ function getInlineImeContext(inputEl: HTMLTextAreaElement | HTMLInputElement) {
   const beforeCaret = text.slice(0, caretPos)
   const afterCaret = text.slice(caretPos)
 
+  // 1. キャレットより手前に最も近い "{" を取得
   const lastOpenBraceIndex = beforeCaret.lastIndexOf("{")
   if (lastOpenBraceIndex === -1) return null
 
+  // 2. その "{" とキャレットの間に "}" があったら、既に閉じられているので無効
   const hasClosedBeforeCaret = beforeCaret
     .slice(lastOpenBraceIndex)
     .includes("}")
   if (hasClosedBeforeCaret) return null
 
-  const firstCloseBraceIndex = afterCaret.indexOf("}")
+  // 💡【コアの修正】キャレットより後ろで「最初に現れる { 」と「最初に現れる } 」の位置を取得
+  const nextOpenBraceIndex = afterCaret.indexOf("{")
+  const nextCloseBraceIndex = afterCaret.indexOf("}")
 
   let queryText = ""
   let endPosInText = caretPos
 
-  if (firstCloseBraceIndex !== -1) {
+  // 有効な閉じ括弧 "}" があるかどうかの判定：
+  // 「"}" が存在し、かつ (次に "{" が現れない、または "{" よりも手前に "}" がある)」場合のみ対応する閉じ括弧とみなす！
+  const hasValidCloseBrace =
+    nextCloseBraceIndex !== -1 &&
+    (nextOpenBraceIndex === -1 || nextCloseBraceIndex < nextOpenBraceIndex)
+
+  if (hasValidCloseBrace) {
+    // 例: "{apple| banana}" や "{he|ll}" のように正しいペアの閉じ括弧がある場合
     queryText =
       beforeCaret.slice(lastOpenBraceIndex + 1) +
-      afterCaret.slice(0, firstCloseBraceIndex)
-    endPosInText = caretPos + firstCloseBraceIndex + 1
+      afterCaret.slice(0, nextCloseBraceIndex)
+    endPosInText = caretPos + nextCloseBraceIndex + 1
   } else {
+    // 例: "{he|(caret) ... {some link K#XXXX}" のように、後ろの { よりも手前に対応する } がない場合
     queryText = beforeCaret.slice(lastOpenBraceIndex + 1)
     endPosInText = caretPos
   }
