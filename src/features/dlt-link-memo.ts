@@ -302,7 +302,17 @@ export async function startLinkMemo() {
         //   return
         // }
         if (e.key === " " && state.searchQuery === "") {
+          // 1段階目のEsc: 検索を終了して通常履歴モードへ
+          const input = document.getElementById(
+            "dlt-search-input",
+          ) as HTMLInputElement
+          if (input) input.blur()
+          state.isSearching = false
           state.searchQuery = ""
+          state.searchResults = []
+          state.currentPage = 0
+          state.cursorIndex = 0
+
           handleSearch("", state)
           executeLinkOperation(state.leftDock)
 
@@ -310,13 +320,6 @@ export async function startLinkMemo() {
           state.history = m.links
 
           renderWidget(state)
-          const input = document.getElementById(
-            "dlt-search-input",
-          ) as HTMLInputElement
-          if (input) {
-            input.value = ""
-            input.focus()
-          }
         }
         if (e.key === "Backspace" && state.searchQuery === "") {
           state.leftDock = []

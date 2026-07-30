@@ -62,16 +62,6 @@ export async function watchDltPage() {
                 r.moved.length > 0 ? `<${r.moved.length}` : "",
               ].join(" "),
             )
-
-          // const res = await mergeLinks(getAllMyLinkFromPage())
-          // if (
-          //   res.result.inserted.length > 0 ||
-          //   res.result.moved.length > 0 ||
-          //   res.result.updated.length > 0
-          // )
-          //   window.dispatchEvent(
-          //     new CustomEvent("dlt-history-updated", { detail: res }),
-          //   )
         }
       }
     }
