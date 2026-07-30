@@ -30,38 +30,70 @@ export async function watchDltPage() {
   ;(window as any).__dlt_watching__ = true
   await syncIDB()
 
-  const observer = new MutationObserver(async (mutations: MutationRecord[]) => {
+  let debounceTimer: ReturnType<typeof setTimeout> | null = null
+
+  // スクレイピングとマージのコア処理（共通化）
+  const runScrapeAndSync = async () => {
+    const res = await scrapeAndMergeFgBg(true, state.history)
+    state.history = res.links
+
+    const r = res.result
+    const myListItem = getListItems(true)
+
+    // 実際に変化があった時だけイベント発火＆トースト表示
+    if (r.inserted.length > 0 || r.updated.length > 0 || r.moved.length > 0) {
+      window.dispatchEvent(
+        new CustomEvent("dlt-history-updated", { detail: res }),
+      )
+
+      showToast(
+        [
+          myListItem.length > 0 ? `&${myListItem.length}` : "",
+          r.inserted.length > 0 ? `+${r.inserted.length}` : "",
+          r.updated.length > 0 ? `^${r.updated.length}` : "",
+          r.moved.length > 0 ? `<${r.moved.length}` : "",
+        ]
+          .filter(Boolean)
+          .join(" "),
+      )
+    }
+  }
+
+  // 💡 タイマー付きで安全に呼び出すデバウンス関数
+  const scheduleScrape = (delay = 200) => {
+    if (debounceTimer) clearTimeout(debounceTimer)
+    debounceTimer = setTimeout(() => {
+      runScrapeAndSync()
+    }, delay)
+  }
+
+  // 1. MutationObserver による .pg 検知（自作UIのDOMは完全除外）
+  const observer = new MutationObserver((mutations: MutationRecord[]) => {
     for (const mutation of mutations) {
       if (mutation.type === "childList" && mutation.addedNodes.length > 0) {
-        if (
-          Array.from(mutation.addedNodes).some(
-            node => node instanceof HTMLElement && node.matches(".pg"),
-          )
-        ) {
-          console.log("mutation! .pg")
-          const res = await scrapeAndMergeFgBg(true, state.history)
-          state.history = res.links
-          window.dispatchEvent(
-            new CustomEvent("dlt-history-updated", { detail: res }),
-          )
+        const addedArray = Array.from(mutation.addedNodes)
 
-          const r = res.result
-          const myListItem = getListItems(true)
-          if (
-            myListItem.length +
-              r.inserted.length +
-              r.updated.length +
-              r.moved.length >
-            0
-          )
-            showToast(
-              [
-                myListItem.length > 0 ? `&${myListItem.length}` : "",
-                r.inserted.length > 0 ? `+${r.inserted.length}` : "",
-                r.updated.length > 0 ? `^${r.updated.length}` : "",
-                r.moved.length > 0 ? `<${r.moved.length}` : "",
-              ].join(" "),
-            )
+        // 💡 自作の小窓やIME自体のDOM更新は無視（チカチカ・無限ループ遮断！）
+        const isSelfUiNode = addedArray.some(
+          node =>
+            node instanceof HTMLElement &&
+            (node.id === "dlt-link-memo-widget" ||
+              node.id === "dlt-inline-ime-popup" ||
+              node.closest("#dlt-link-memo-widget, #dlt-inline-ime-popup")),
+        )
+        if (isSelfUiNode) continue
+
+        // .pg (投稿タイムライン) が含まれるか判定
+        const hasPgNode = addedArray.some(
+          node =>
+            node instanceof HTMLElement &&
+            (node.matches(".pg") || node.querySelector(".pg")),
+        )
+
+        if (hasPgNode) {
+          console.log("mutation! .pg detected")
+          scheduleScrape(150) // .pg が来たら速やかにスクレイピング
+          break
         }
       }
     }
@@ -71,6 +103,26 @@ export async function watchDltPage() {
     subtree: true,
     childList: true,
   })
+
+  // 2. ページ内クリックへの追従（手動 r 押しの完全自動化）
+  // サイト内のボタン・アコーディオン・全知検索結果のクリックなどの非同期UI更新をキャッチ
+  window.addEventListener(
+    "click",
+    e => {
+      const target = e.target as HTMLElement
+      // 自作UIの中のクリックは無視
+      if (
+        target &&
+        target.closest("#dlt-link-memo-widget, #dlt-inline-ime-popup")
+      ) {
+        return
+      }
+
+      // ユーザーが何かをクリックしたら、サイト側の描画が落ち着く 300ms 後に自動チェック
+      scheduleScrape(300)
+    },
+    true, // キャプチャフェーズで拾う
+  )
 }
 
 // document.addEventListener(
