@@ -45,7 +45,7 @@ let globalState: AppState = {
   leftDock: [],
   currentPage: 0,
   cursorIndex: 0,
-  numbersOfPage: 10,
+  numbersOfPage: 12,
   searchQuery: "",
   searchResults: [],
   isSearching: false,
@@ -541,25 +541,26 @@ function handleSearch(query: string, state: AppState) {
 export function renderWidget(state: AppState) {
   let widget = document.getElementById("dlt-link-memo-widget")
   let floatingDock = document.getElementById("dlt-floating-dock")
+  let listPane = document.getElementById("dlt-list-pane")
   if (!widget) {
     widget = document.createElement("div")
     widget.id = "dlt-link-memo-widget"
 
     widget.innerHTML = `
       <div>
-      <div id="dlt-floating-dock"></div>
+        <div id="dlt-floating-dock"></div>
+        <div id="dlt-list-pane"></div>
 
-      <div style="border-radius: 8px; boxShadow: 0 10px 30px rgba(0,0,0,0.6); border: 1px solid ${state.isSearching ? "#89b4fa" : "#45475a"};
-      background: #181825; padding: 8px; display: flex; align-items: center; gap: 8px; height: 36px; box-sizing: border-box; border-bottom: 1px solid #313244;">
-        <input id="dlt-search-input" type="text" placeholder="Type to search..." autocomplete="off"
-          style="background: #1e1e2e; border: 1px solid #45475a; color: #cdd6f4; padding: 4px 8px; border-radius: 4px; flex: 1; outline: none; font-size: 16px;" />
-        <span id="dlt-storage-status" style="font-size: 12px; color: #a6adc8; font-family: monospace; background: #1e1e2e; padding: 2px 6px; border-radius: 4px;"></span>
-        <span id="dlt-page-indicator" style="font-size: 12px; color: #a6adc8; font-family: monospace;">1/1</span>
-      </div>
-      <div style="display: flex; flex: 1; overflow: hidden; height: calc(100% - 36px);">
-        <!-- 💡 履歴（LIST）ペインを全幅 100% に拡張！ -->
-        <div id="dlt-list-pane" style="width: 100%; padding: 8px; overflow-y: auto; background: #181825; box-sizing: border-box;"></div>
-      </div>
+        <div style="border-radius: 8px; boxShadow: 0 10px 30px rgba(0,0,0,0.6); border: 1px solid ${state.isSearching ? "#89b4fa" : "#45475a"};
+        background: #181825; padding: 8px; display: flex; align-items: center; gap: 8px; height: 36px; box-sizing: border-box; border-bottom: 1px solid #313244;">
+          <input id="dlt-search-input" type="text" placeholder="Type to search..." autocomplete="off"
+            style="background: #1e1e2e; border: 1px solid #45475a; color: #cdd6f4; padding: 4px 8px; border-radius: 4px; flex: 1; outline: none; font-size: 16px;" />
+          <span id="dlt-storage-status" style="font-size: 12px; color: #a6adc8; font-family: monospace; background: #1e1e2e; padding: 2px 6px; border-radius: 4px;"></span>
+          <span id="dlt-page-indicator" style="font-size: 12px; color: #a6adc8; font-family: monospace;">1/1</span>
+        </div>
+        <!-- <div style="display: flex; flex: 1; overflow: hidden; height: calc(100% - 36px);">
+          <div id="dlt-list-pane" style="width: 100%; padding: 8px; overflow-y: auto; background: #181825; box-sizing: border-box;"></div>
+        </div> -->
       </div>
     `
 
@@ -567,6 +568,7 @@ export function renderWidget(state: AppState) {
 
     // 💡 小窓の直上に浮遊する DOCK コンテナ
     floatingDock = widget.querySelector("#dlt-floating-dock")
+    listPane = widget.querySelector("#dlt-list-pane")
 
     // floatingDock = document.createElement("div")
     // floatingDock.id = "dlt-floating-dock"
@@ -600,9 +602,17 @@ export function renderWidget(state: AppState) {
     })
   }
 
+  // right: 70px; width: min(90%, 430px);
+
+  const widgetWidth = Math.min(500, document.documentElement.clientWidth * 0.8)
+  const widgetRight =
+    document.documentElement.clientWidth * 0.45 - widgetWidth / 2
+
   widget.style.cssText = `
-    position: fixed; bottom: 0px; right: 18px; z-index: 20000000;
-    width: min(460px, 90%);
+    position: fixed; bottom: 0px;
+    right: ${widgetRight}px;
+    z-index: 20000000;
+    width: ${widgetWidth}px;
     <!-- height: min(500px, 70vh); -->
     background: #181825; color: #cdd6f4;
     font-family: monospace;
@@ -615,27 +625,33 @@ export function renderWidget(state: AppState) {
   const idToLinkMap = new Map(state.history.map(l => [l.id, l]))
 
   // 💡 浮遊 DOCK コンテナのスタイル（小窓の右上起点で上へ積み上がる）
-  if (floatingDock) {
-    floatingDock.style.cssText = `
+  const floatingDockCss = `
       margin-bottom: 4px;
       <!-- position: fixed;
       right: 16px;
       bottom: min(508px, calc(50vh + 8px)); /* 小窓のすぐ上 */ -->
-      width: min(460px, 90%);
+      width: ${widgetWidth}px;
       z-index: 20000001;
-      display: ${state.isWidgetActive && state.leftDock.length > 0 ? "flex" : "none"};
+      display: flex;
       flex-wrap: wrap-reverse; /* 下から上へ折れ曲がって積み上がる */
-      justify-content: flex-end; /* 右揃え（小窓の右端に整列） */
+      /* justify-content: flex-end; 右揃え（小窓の右端に整列） */
+      justify-content: center;
+      align-items: flex-start;
       gap: 6px;
       pointer-events: none; /* コンテナ自体はクリックを透過 */
       box-sizing: border-box;
     `
 
+  if (floatingDock) {
+    floatingDock.style.cssText = floatingDockCss
+
     // DOCK（台）アイテムの描画（IME風浮遊チップ）
     floatingDock.innerHTML = state.leftDock
       .map(
         link =>
-          candidateTip(idToLinkMap, link, false, true, {
+          candidateTip(idToLinkMap, link, true, {
+            withId: false,
+            withFg: false,
             fgFontSize: "8px",
             titleFontSize: "12px",
           }),
@@ -730,23 +746,31 @@ export function renderWidget(state: AppState) {
   // }
 
   // LISTペイン描画 ...
-  const listPane = document.getElementById("dlt-list-pane")
   if (listPane) {
-    const rightItems = getPagedItems(state)
-    listPane.innerHTML = `
-      <div style="font-size: 10px; color: #f9e2af; font-weight: bold; margin-bottom: 6px;">
-        ${state.isSearching ? "[ SEARCH RESULTS ]" : "[ HISTORY ]"}
-      </div>
-      ${rightItems.map((link, idx) => renderLinkItem(link, idx === state.cursorIndex)).join("")}
-    `
+    listPane.style.cssText = floatingDockCss
+    listPane.innerHTML = getPagedItems(state)
+      .map((link, i) =>
+        candidateTip(idToLinkMap, link, state.cursorIndex === i, {
+          wrapTitle: true,
+        }),
+      )
+      .join("")
+
+    // const rightItems = getPagedItems(state)
+    // listPane.innerHTML = `
+    //   <div style="font-size: 10px; color: #f9e2af; font-weight: bold; margin-bottom: 6px;">
+    //     ${state.isSearching ? "[ SEARCH RESULTS ]" : "[ HISTORY ]"}
+    //   </div>
+    //   ${rightItems.map((link, idx) => renderLinkItem(link, idx === state.cursorIndex)).join("")}
+    // `
 
     // 💡【コア】選択中の項目へ自動スクロール追従させて見切れを解消！
-    const selectedEl = listPane.querySelectorAll(".dlt-list-item")[
-      state.cursorIndex
-    ] as HTMLElement
-    if (selectedEl) {
-      selectedEl.scrollIntoView({ block: "nearest" })
-    }
+    // const selectedEl = listPane.querySelectorAll(".dlt-list-item")[
+    //   state.cursorIndex
+    // ] as HTMLElement
+    // if (selectedEl) {
+    //   selectedEl.scrollIntoView({ block: "nearest" })
+    // }
   }
 }
 
