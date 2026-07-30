@@ -18,6 +18,7 @@ import {
   mergeLinksToIDB,
   setupTabSyncListener,
 } from "./dlt-db"
+import { candidateTip } from "./dlt-component"
 
 type IMEOption = {
   suggestionNumbers: number
@@ -395,6 +396,7 @@ class InlineSuggestPopup {
     this.el.innerHTML = candidates
       .map((cand, idx) => {
         const isSelected = idx === selectedIndex
+        return candidateTip(historyMap, cand, isSelected)
 
         const bg = isSelected ? "#313244" : "rgba(24, 24, 37, 0.88)"
         const border = isSelected

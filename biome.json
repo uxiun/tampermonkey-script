@@ -5,7 +5,8 @@
   "linter": {
     "rules": {
       "correctness": {
-        "useExhaustiveDependencies": "info"
+        "useExhaustiveDependencies": "info",
+        "noUnreachable": "warn"
       },
       "suspicious": {
         "useIterableCallbackReturn": "info"

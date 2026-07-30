@@ -24,6 +24,7 @@ import {
 } from "./dlt-storage"
 import { dltkeys } from "./keys"
 import { HintMap, linkHint } from "./link-hint"
+import { candidateTip } from "./dlt-component"
 
 export interface AppState {
   history: PostLink[]
@@ -539,26 +540,37 @@ function handleSearch(query: string, state: AppState) {
 
 export function renderWidget(state: AppState) {
   let widget = document.getElementById("dlt-link-memo-widget")
+  let floatingDock = document.getElementById("dlt-floating-dock")
   if (!widget) {
     widget = document.createElement("div")
     widget.id = "dlt-link-memo-widget"
 
     widget.innerHTML = `
-      <div style="background: #181825; padding: 8px; display: flex; align-items: center; gap: 8px; height: 36px; box-sizing: border-box; border-bottom: 1px solid #313244;">
+      <div>
+      <div id="dlt-floating-dock"></div>
+
+      <div style="border-radius: 8px; boxShadow: 0 10px 30px rgba(0,0,0,0.6); border: 1px solid ${state.isSearching ? "#89b4fa" : "#45475a"};
+      background: #181825; padding: 8px; display: flex; align-items: center; gap: 8px; height: 36px; box-sizing: border-box; border-bottom: 1px solid #313244;">
         <input id="dlt-search-input" type="text" placeholder="Type to search..." autocomplete="off"
           style="background: #1e1e2e; border: 1px solid #45475a; color: #cdd6f4; padding: 4px 8px; border-radius: 4px; flex: 1; outline: none; font-size: 16px;" />
         <span id="dlt-storage-status" style="font-size: 12px; color: #a6adc8; font-family: monospace; background: #1e1e2e; padding: 2px 6px; border-radius: 4px;"></span>
         <span id="dlt-page-indicator" style="font-size: 12px; color: #a6adc8; font-family: monospace;">1/1</span>
       </div>
       <div style="display: flex; flex: 1; overflow: hidden; height: calc(100% - 36px);">
-        <!-- 💡 DOCKペイン（左）スクロール可能に -->
-        <div id="dlt-dock-pane" style="width: 38%; background: #11111b; border-right: 1px solid #313244; padding: 8px; overflow-y: auto; box-sizing: border-box;"></div>
-        <!-- 💡 LISTペイン（右）スクロール可能に -->
-        <div id="dlt-list-pane" style="width: 62%; padding: 8px; overflow-y: auto; background: #181825; box-sizing: border-box;"></div>
+        <!-- 💡 履歴（LIST）ペインを全幅 100% に拡張！ -->
+        <div id="dlt-list-pane" style="width: 100%; padding: 8px; overflow-y: auto; background: #181825; box-sizing: border-box;"></div>
+      </div>
       </div>
     `
 
     document.body.appendChild(widget)
+
+    // 💡 小窓の直上に浮遊する DOCK コンテナ
+    floatingDock = widget.querySelector("#dlt-floating-dock")
+
+    // floatingDock = document.createElement("div")
+    // floatingDock.id = "dlt-floating-dock"
+    // document.body.appendChild(floatingDock)
 
     const input = widget.querySelector("#dlt-search-input") as HTMLInputElement
 
@@ -570,25 +582,6 @@ export function renderWidget(state: AppState) {
       handleSearch(val, state)
       renderWidget(state)
     })
-
-    // // 👈 インプット要素の「内部」で発生したEscが、ブラウザの標準挙動で消されるのを防ぐ絶対防御壁
-    // input.addEventListener(
-    //   "keydown",
-    //   e => {
-    //     if (e.key === "Escape") {
-    //       e.preventDefault()
-    //       e.stopPropagation()
-    //       input.blur()
-    //       state.isSearching = false
-    //       state.searchQuery = ""
-    //       state.searchResults = []
-    //       state.currentPage = 0
-    //       state.cursorIndex = 0
-    //       renderWidget(state)
-    //     }
-    //   },
-    //   true,
-    // )
 
     // 💡【新発想】VimiumCがEscを横取りしてフォーカスを外した瞬間（blur）を検知して、
     // 連動してシステム側も一発で [ HISTORY ] モードへ安全に押し戻す最強の裏口
@@ -608,13 +601,53 @@ export function renderWidget(state: AppState) {
   }
 
   widget.style.cssText = `
-    position: fixed; bottom: 0px; right: 16px; z-index: 20000000;
-    width: min(460px, 90%); height: min(500px, 50vh); background: #181825; color: #cdd6f4;
-    font-family: monospace; border-radius: 8px; boxShadow: 0 10px 30px rgba(0,0,0,0.6);
+    position: fixed; bottom: 0px; right: 18px; z-index: 20000000;
+    width: min(460px, 90%);
+    <!-- height: min(500px, 70vh); -->
+    background: #181825; color: #cdd6f4;
+    font-family: monospace;
     display: ${state.isWidgetActive ? "flex" : "none"}; flex-direction: column;
-    overflow: hidden; border: 1px solid ${state.isSearching ? "#89b4fa" : "#45475a"};
+    overflow: hidden;
     opacity: 0.96; box-sizing: border-box;
   `
+
+  // 前景IDからタイトルを即座に引けるマップを作成（パフォーマンス確保）
+  const idToLinkMap = new Map(state.history.map(l => [l.id, l]))
+
+  // 💡 浮遊 DOCK コンテナのスタイル（小窓の右上起点で上へ積み上がる）
+  if (floatingDock) {
+    floatingDock.style.cssText = `
+      margin-bottom: 4px;
+      <!-- position: fixed;
+      right: 16px;
+      bottom: min(508px, calc(50vh + 8px)); /* 小窓のすぐ上 */ -->
+      width: min(460px, 90%);
+      z-index: 20000001;
+      display: ${state.isWidgetActive && state.leftDock.length > 0 ? "flex" : "none"};
+      flex-wrap: wrap-reverse; /* 下から上へ折れ曲がって積み上がる */
+      justify-content: flex-end; /* 右揃え（小窓の右端に整列） */
+      gap: 6px;
+      pointer-events: none; /* コンテナ自体はクリックを透過 */
+      box-sizing: border-box;
+    `
+
+    // DOCK（台）アイテムの描画（IME風浮遊チップ）
+    floatingDock.innerHTML = state.leftDock
+      .map(
+        link =>
+          candidateTip(idToLinkMap, link, false, true, {
+            fgFontSize: "8px",
+            titleFontSize: "12px",
+          }),
+
+        //     `
+        //   <div style="pointer-events: auto; background: rgba(24, 24, 37, 0.88); border: 1px solid rgba(69, 71, 90, 0.6); color: #cdd6f4; padding: 5px 10px; border-radius: 6px; font-size: 12px; font-family: monospace; box-shadow: 0 4px 12px rgba(0,0,0,0.5); backdrop-filter: blur(4px); white-space: nowrap; max-width: 100%; overflow: hidden; text-overflow: ellipsis;">
+        //     ⚓ ${postLinkText(link)}
+        //   </div>
+        // `,
+      )
+      .join("")
+  }
 
   if (!state.isWidgetActive) return
 
@@ -653,9 +686,6 @@ export function renderWidget(state: AppState) {
     pageIndicator.innerText = `${state.currentPage + 1}/${maxPage}`
   }
 
-  // 前景IDからタイトルを即座に引けるマップを作成（パフォーマンス確保）
-  const idToLinkMap = new Map(state.history.map(l => [l.id, l]))
-
   const renderLinkItem = (link: PostLink, isSelected: boolean) => {
     // 1. 前景（親）のタイトルを最大2〜3件抽出（IDからタイトルを逆引き）
     const fgTitles = (link.fg || [])
@@ -665,7 +695,7 @@ export function renderWidget(state: AppState) {
 
     const fgBadgeHtml =
       fgTitles.length > 0
-        ? `<div style="font-size: 12px; color: #89b4fa; opacity: 0.85; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-bottom: 2px;">
+        ? `<div style="font-size: 14px; color: #89b4fa; opacity: 0.85; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-bottom: 2px;">
             ${fgTitles.join("｜")}
            </div>`
         : ""
@@ -690,14 +720,14 @@ export function renderWidget(state: AppState) {
     `
   }
 
-  // DOCKペイン描画 ...
-  const dockPane = document.getElementById("dlt-dock-pane")
-  if (dockPane) {
-    dockPane.innerHTML = `
-      <div style="font-size: 10px; color: #f38ba8; font-weight: bold; margin-bottom: 6px;">[ DOCK ]</div>
-      ${state.leftDock.map(link => `<div style="font-size: 11px; margin-bottom: 4px; color: #a6e3a1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">⚓ ${postLinkText(link)}</div>`).join("")}
-    `
-  }
+  // // DOCKペイン描画 ...
+  // const dockPane = document.getElementById("dlt-dock-pane")
+  // if (dockPane) {
+  //   dockPane.innerHTML = `
+  //     <div style="font-size: 10px; color: #f38ba8; font-weight: bold; margin-bottom: 6px;">[ DOCK ]</div>
+  //     ${state.leftDock.map(link => `<div style="font-size: 11px; margin-bottom: 4px; color: #a6e3a1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">⚓ ${postLinkText(link)}</div>`).join("")}
+  //   `
+  // }
 
   // LISTペイン描画 ...
   const listPane = document.getElementById("dlt-list-pane")
