@@ -106,6 +106,7 @@ function searchHistoryFast(option: IMEOption, state: IMEState) {
 }
 
 function runSearch(option: IMEOption, state: IMEState) {
+  console.log("runSearch, state:", state)
   const matched = searchHistoryFast(option, state)
 
   if (matched.length === 0) {
@@ -562,7 +563,7 @@ function getInlineImeContext(inputEl: HTMLTextAreaElement | HTMLInputElement) {
   }
 
   queryText = queryText.trim()
-  if (!queryText) return null
+  // if (!queryText) return null
 
   return {
     query: queryText,

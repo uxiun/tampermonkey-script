@@ -66,7 +66,8 @@ export interface HintMap<S> {
 // 2. コアロジック（修正版 linkHint）
 // ==========================================
 
-export function linkHint<S>(hintMap: HintMap<S>, state: S): void {
+export function linkHint<S>(hintMap: HintMap<S>, state: S): S {
+  let newState = state
   const removeLabels = () => {
     document.querySelectorAll(".my-ac-hint-label").forEach(el => el.remove())
   }
@@ -111,7 +112,7 @@ export function linkHint<S>(hintMap: HintMap<S>, state: S): void {
         label.innerText = code.toUpperCase()
         label.style.cssText = `
           position: fixed; top: ${offsetY + rect.top}px; left: ${offsetX + rect.left}px;
-          z-index: 10000000; background: #f1c40f; color: black; font-weight: bold; font-size: 12px;
+          z-index: 50000000; background: #f1c40f; color: black; font-weight: bold; font-size: 12px;
           padding: 2px 4px; border-radius: 3px; border: 1px solid #d35400; box-shadow: 0 2px 5px rgba(0,0,0,0.3);
           pointer-events: none;
         `
@@ -138,12 +139,11 @@ export function linkHint<S>(hintMap: HintMap<S>, state: S): void {
     const changeAction = hintMap.changeState?.get(pressedKey)
     if (changeAction) {
       e.stopImmediatePropagation()
-      const newState = changeAction(state)
+      newState = changeAction(state)
       if (hintMap.showState) hintMap.showState(newState)
       // 状態が変わったので、新しい状態を引き連れて「現在の階層」を再描画（リフレッシュ）
       cleanup()
       setTimeout(() => linkHint(hintMap, newState), 0)
-      return
     }
 
     // パターン3: 文字入力による非ターミナル遷移（NonTerminalキー）
@@ -151,8 +151,10 @@ export function linkHint<S>(hintMap: HintMap<S>, state: S): void {
     if (nextMap) {
       e.stopImmediatePropagation()
       cleanup()
-      setTimeout(() => linkHint(nextMap, state), 0)
-      return
+      setTimeout(() => {
+        newState = linkHint(nextMap, state)
+      }, 0)
+      return newState
     }
 
     //
@@ -163,7 +165,6 @@ export function linkHint<S>(hintMap: HintMap<S>, state: S): void {
       cleanup() // 遷移する前に現在のリスナーとラベルを完全に解除
       const t = match.sourceTarget // 叩かれた要素のオリジナルの設定を取得
 
-      let newState = state
       // 1. アクションがあれば実行して状態を更新
       if (t.action) {
         const res = t.action(match.element, state)
@@ -176,14 +177,14 @@ export function linkHint<S>(hintMap: HintMap<S>, state: S): void {
       // 2. 所属していたターゲットの type に応じて未来を分岐させる
       if (t.type === "terminal") {
         // terminal ならここで処理を終了（再帰しない）
-        return
+        return newState
       } else if (t.type === "non-terminal") {
         // non-terminal なら、その要素用に定義されている次のヒントマップを生成して連鎖
         // ※ 1打鍵目のキーダウンイベントを完全にブラウザに消化させるため setTimeout で次ループへ逃がす
         setTimeout(() => {
-          linkHint(t.hintMap(match.element), newState)
+          newState = linkHint(t.hintMap(match.element), newState)
         }, 0)
-        return
+        return newState
       }
     }
   }
@@ -195,4 +196,5 @@ export function linkHint<S>(hintMap: HintMap<S>, state: S): void {
   }
 
   window.addEventListener("keydown", keyListener, true)
+  return newState
 }

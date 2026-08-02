@@ -14,7 +14,7 @@ export function showToast(message: string, durationMs = 2500) {
     borderRadius: "4px",
     fontSize: "14px",
     fontFamily: "sans-serif",
-    zIndex: "999999", // 他の要素の裏に隠れないように最前面へ
+    zIndex: "90000000", // 他の要素の裏に隠れないように最前面へ
     opacity: "0",
     transition: "opacity 0.3s ease", // 自然に消えるフェード効果
     pointerEvents: "none", // クリックの邪魔にならないようにする

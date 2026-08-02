@@ -261,6 +261,7 @@ export async function startLinkMemo(option: LinkMemoOption) {
 
         if (e.key === "ArrowDown") {
           e.preventDefault()
+          e.stopPropagation()
 
           if (state.cursorIndex < currentItems.length - 1) {
             // ページ内で下に動く
@@ -281,6 +282,7 @@ export async function startLinkMemo(option: LinkMemoOption) {
         }
         if (e.key === "ArrowUp") {
           e.preventDefault()
+          e.stopPropagation()
           if (state.cursorIndex > 0) {
             // ページ内で上に動く
             state.cursorIndex--
@@ -318,6 +320,9 @@ export async function startLinkMemo(option: LinkMemoOption) {
         //   return
         // }
         if (e.key === " " && state.searchQuery === "") {
+          e.preventDefault()
+          e.stopPropagation()
+          const at = getAt()
           // 1段階目のEsc: 検索を終了して通常履歴モードへ
           const input = document.getElementById(
             "dlt-search-input",
@@ -331,6 +336,14 @@ export async function startLinkMemo(option: LinkMemoOption) {
 
           handleSearch("", state)
           executeLinkOperation(state.leftDock)
+          const timestamped = state.leftDock.map(link =>
+            useCount({ ...link, at }),
+          )
+          state.history = mergeLinksFast(state.history, timestamped).links
+          state.leftDock = []
+          localStorage.setItem(DLT_DOCK_KEY, JSON.stringify(state.leftDock))
+
+          handleSearch("", state)
 
           const m = await scrapeAndMergeFgBg(true, state.history)
           state.history = m.links
@@ -338,6 +351,8 @@ export async function startLinkMemo(option: LinkMemoOption) {
           renderWidget(state)
         }
         if (e.key === "Backspace" && state.searchQuery === "") {
+          e.preventDefault()
+          e.stopPropagation()
           state.leftDock = []
           localStorage.setItem(DLT_DOCK_KEY, JSON.stringify(state.leftDock))
           handleSearch("", state)
@@ -406,6 +421,8 @@ export async function startLinkMemo(option: LinkMemoOption) {
       }
 
       if (option.toggleKeys.includes(e.key)) {
+        e.preventDefault()
+        e.stopPropagation()
         state.isWidgetActive = false
         renderWidget(state)
         return
@@ -437,6 +454,9 @@ export async function startLinkMemo(option: LinkMemoOption) {
 
       switch (e.key) {
         case "ArrowDown":
+          e.preventDefault()
+          e.stopPropagation()
+
           if (state.cursorIndex < currentItems.length - 1) {
             // ページ内で下に動く
             state.cursorIndex++
@@ -452,6 +472,8 @@ export async function startLinkMemo(option: LinkMemoOption) {
           }
           break
         case "ArrowUp":
+          e.preventDefault()
+          e.stopPropagation()
           if (state.cursorIndex > 0) {
             // ページ内で上に動く
             state.cursorIndex--
@@ -469,48 +491,49 @@ export async function startLinkMemo(option: LinkMemoOption) {
           }
           break
         case "ArrowRight":
+          e.preventDefault()
+          e.stopPropagation()
           if (state.currentPage < maxPage - 1) {
             state.currentPage++
             state.cursorIndex = 0
           }
           break
         case "ArrowLeft":
+          e.preventDefault()
+          e.stopPropagation()
           if (state.currentPage > 0) {
             state.currentPage--
             state.cursorIndex = 0
           }
           break
         case "Enter": {
+          e.preventDefault()
+          e.stopPropagation()
           const target = currentItems[state.cursorIndex]
           if (!target) return
           if (state.leftDock.some(l => l.id === target.id)) {
             state.leftDock = state.leftDock.filter(l => l.id !== target.id)
-            localStorage.setItem(DLT_DOCK_KEY, JSON.stringify(state.leftDock))
           } else {
-            const targetUpdated = useCount({ ...target, at: getAt() })
-            state.leftDock.push(targetUpdated)
-            // 💡 保存＆同期
-            localStorage.setItem(DLT_DOCK_KEY, JSON.stringify(state.leftDock))
-
-            mergeLinksToIDB([targetUpdated], state.history).then(m => {
-              state.history = m.links
-            })
-
-            // const history = [
-            //   targetUpdated,
-            //   ...state.history.filter(link => link.id !== target.id),
-            // ]
-            // state.history = history
-            // localStorage.setItem(DLT_HISTORY_KEY, JSON.stringify(history))
+            state.leftDock.unshift(target)
           }
+          localStorage.setItem(DLT_DOCK_KEY, JSON.stringify(state.leftDock))
           break
         }
         case "Backspace":
+          e.preventDefault()
+          e.stopPropagation()
           state.leftDock = []
           localStorage.setItem(DLT_DOCK_KEY, JSON.stringify(state.leftDock))
           break
         case " ": {
+          e.preventDefault()
+          e.stopPropagation()
+          const at = getAt()
           executeLinkOperation(state.leftDock)
+          const timestamped = state.leftDock.map(link =>
+            useCount({ ...link, at }),
+          )
+          state.history = mergeLinksFast(state.history, timestamped).links
           state.leftDock = []
           localStorage.setItem(DLT_DOCK_KEY, JSON.stringify(state.leftDock))
           const m = await scrapeAndMergeFgBg(true, state.history)
@@ -518,11 +541,15 @@ export async function startLinkMemo(option: LinkMemoOption) {
           break
         }
         case "Tab":
+          e.preventDefault()
+          e.stopPropagation()
           await executeCopy(state.leftDock.reverse())
           state.leftDock = []
           state.isWidgetActive = false
           break
         case "b": {
+          e.preventDefault()
+          e.stopPropagation()
           // backup
           const msg = await backupLinks(state.history)
           console.log(msg)
@@ -530,6 +557,8 @@ export async function startLinkMemo(option: LinkMemoOption) {
           break
         }
         case "y": {
+          e.preventDefault()
+          e.stopPropagation()
           // get
           const restored = await restoreLinks(state.history)
           console.log("restored links:", restored)
@@ -541,7 +570,12 @@ export async function startLinkMemo(option: LinkMemoOption) {
         // }
       }
 
-      renderWidget(state)
+      globalState = { ...state }
+      renderWidget(globalState)
+      console.log(
+        "history(5):",
+        globalState.history.slice(0, 5).map(link => link.title),
+      )
     },
     true, // キャプチャフェーズ
   )
@@ -811,8 +845,10 @@ function executeLinkOperation(links: PostLink[]) {
 
   // 💡 リンクヒント起動の合図となるフラグを立てる
   // ;(window as any).__dlt_link_hint_active__ = true
-
-  const hintmap: HintMap<null> = {
+  interface State {
+    executed: boolean
+  }
+  const hintmap: HintMap<State> = {
     targetElements: [
       {
         type: "non-terminal",
@@ -827,7 +863,7 @@ function executeLinkOperation(links: PostLink[]) {
             targetElements: [
               {
                 type: "terminal",
-                keys: ["d", "l"],
+                keys: ["l", "s"],
 
                 elements: () => {
                   const fg = el.querySelector(":scope > a.sgn_bg")
@@ -846,7 +882,7 @@ function executeLinkOperation(links: PostLink[]) {
                     input = element.querySelector(":scope > input.drg_in")
                   }
 
-                  if (!input) return
+                  if (!input) return state
                   input.classList.add("shw")
                   input.value = postLinkTextList(links)
                   console.log("input.value =", input.value)
@@ -868,6 +904,7 @@ function executeLinkOperation(links: PostLink[]) {
                     DLT_DOCK_KEY,
                     JSON.stringify(globalState.leftDock),
                   )
+                  return { executed: true }
                 },
               },
             ],
@@ -878,5 +915,5 @@ function executeLinkOperation(links: PostLink[]) {
   }
 
   console.log(hintmap)
-  linkHint(hintmap, null)
+  return linkHint(hintmap, { executed: false })
 }

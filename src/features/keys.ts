@@ -16,7 +16,7 @@ const siteShortcut = {
 }
 
 const vimiumcKeys = {
-  dlt: "fgjk.mzo",
+  dlt: "dfgjk.mzo",
 }
 
 const autocontrolKeys = {

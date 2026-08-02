@@ -298,7 +298,7 @@ export const restoreLinks = async (current?: PostLink[]) => {
 // キーワード群によるAND包含検索 ＆ スコアリングロジック
 export function searchLinks(query: string, links: PostLink[]) {
   const keywords = query.split(/\s+/).filter(Boolean)
-  if (keywords.length === 0) return []
+  if (keywords.length === 0) return links
 
   const results: { link: PostLink; score: number }[] = []
 
