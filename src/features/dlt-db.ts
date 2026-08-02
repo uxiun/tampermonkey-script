@@ -214,8 +214,8 @@ export async function mergeFgBgFast(
 
 export async function scrapeAndMergeFgBg(limitOwn = true, cache?: PostLink[]) {
   const res = scrapeWithFgBg(limitOwn)
-  const m = await mergeFgBgFast(res, cache)
-  await saveLinksToIDB(m.toSave)
+  const { toSave, ...m } = await mergeFgBgFast(res, cache)
+  await saveLinksToIDB(toSave)
   return m
 }
 

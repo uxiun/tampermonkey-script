@@ -191,7 +191,7 @@ export interface ScrapeResult {
 }
 
 export const scrapeWithFgBg = (limitOwn = true) => {
-  console.log("limitOwn", limitOwn)
+  console.log(`scrapeWithFgBg(limitOwn: ${limitOwn})`)
   const r: ScrapeResult = {
     list: [],
     fg: [],

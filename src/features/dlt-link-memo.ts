@@ -39,7 +39,7 @@ export interface AppState {
   lastAddedCount: number
 }
 
-let globalState: AppState = {
+let appState: AppState = {
   history: [],
   isWidgetActive: false,
   leftDock: [],
@@ -72,43 +72,43 @@ export async function startLinkMemo(option: LinkMemoOption) {
   }
   console.log("🚀 startLinkMemo")
 
-  // 1. 初回起動時にIDBから全件取得してメモリ(globalState.history)にロード
-  globalState.history = await getAllLinksFromIDB()
+  // 1. 初回起動時にIDBから全件取得してメモリ(appState.history)にロード
+  appState.history = await getAllLinksFromIDB()
 
   // 2. タブ間同期リスナーをセット（他タブで変更があったら再読み込み）
   // 💡【重要】他タブからの更新は、メモリ上でのみマージする（再保存による無限ループを遮断！）
   setupTabSyncListener(diff => {
-    const m = mergeLinksFast(globalState.history, diff)
-    globalState.history = m.links
-    if (globalState.isWidgetActive) renderWidget(globalState)
+    const m = mergeLinksFast(appState.history, diff)
+    appState.history = m.links
+    if (appState.isWidgetActive) renderWidget(appState)
 
     // IME側のインメモリキャッシュも同期するカスタムイベントを発行
     window.dispatchEvent(new CustomEvent("dlt-history-updated", { detail: m }))
   })
 
   // 3. 画面内からの自動収集リンクをIDBにマージ
-  const scraped = await scrapeAndMergeFgBg(true, globalState.history)
-  globalState.history = scraped.links
-  globalState.lastAddedCount = scraped.result.inserted.length
+  const scraped = await scrapeAndMergeFgBg(true, appState.history)
+  appState.history = scraped.links
+  appState.lastAddedCount = scraped.result.inserted.length
 
-  renderWidget(globalState)
+  renderWidget(appState)
 
   // 💡【重要】リロード対策：左の台（leftDock）の状態も localStorage から復元する！
-  globalState.leftDock = JSON.parse(localStorage.getItem(DLT_DOCK_KEY) || "[]")
+  appState.leftDock = JSON.parse(localStorage.getItem(DLT_DOCK_KEY) || "[]")
 
-  renderWidget(globalState)
+  renderWidget(appState)
 
   if ((window as any).__dlt_memo_listener_installed__) return
   ;(window as any).__dlt_memo_listener_installed__ = true
 
   window.addEventListener("storage", e => {
     if (e.key === DLT_HISTORY_KEY) {
-      globalState.history = JSON.parse(e.newValue || "[]")
-      if (globalState.isWidgetActive) renderWidget(globalState)
+      appState.history = JSON.parse(e.newValue || "[]")
+      if (appState.isWidgetActive) renderWidget(appState)
     }
     if (e.key === DLT_DOCK_KEY) {
-      globalState.leftDock = JSON.parse(e.newValue || "[]")
-      if (globalState.isWidgetActive) renderWidget(globalState)
+      appState.leftDock = JSON.parse(e.newValue || "[]")
+      if (appState.isWidgetActive) renderWidget(appState)
     }
   })
 
@@ -121,18 +121,18 @@ export async function startLinkMemo(option: LinkMemoOption) {
 
     const diff = m.result.inserted.length
     if (diff > 0) {
-      globalState.lastAddedCount = diff // 直近追加件数を更新
+      appState.lastAddedCount = diff // 直近追加件数を更新
     }
 
-    globalState.leftDock = links
+    appState.leftDock = links
 
-    console.log(globalState.history.slice(0, 5))
-    globalState.history = m.links
-    console.log(globalState.history.slice(0, 5))
+    console.log(appState.history.slice(0, 5))
+    appState.history = m.links
+    console.log(appState.history.slice(0, 5))
 
     // 直接最新のデータを受け取る
-    if (globalState.isWidgetActive) {
-      renderWidget(globalState) // 即座に描画更新！
+    if (appState.isWidgetActive) {
+      renderWidget(appState) // 即座に描画更新！
     }
   })
 
@@ -142,10 +142,10 @@ export async function startLinkMemo(option: LinkMemoOption) {
       result: MergeLinkResult
     } = e.detail
     if (res.result.inserted.length > 0)
-      globalState.lastAddedCount = res.result.inserted.length
-    globalState.history = res.links
-    if (globalState.isWidgetActive) {
-      renderWidget(globalState) // 即座に描画更新！
+      appState.lastAddedCount = res.result.inserted.length
+    appState.history = res.links
+    if (appState.isWidgetActive) {
+      renderWidget(appState) // 即座に描画更新！
     }
   })
 
@@ -155,18 +155,18 @@ export async function startLinkMemo(option: LinkMemoOption) {
       if (isAltDown) {
         e.preventDefault()
         e.stopPropagation()
-        if (globalState.isWidgetActive) {
-          globalState.isWidgetActive = false
+        if (appState.isWidgetActive) {
+          appState.isWidgetActive = false
         } else {
-          // syncLocalStorage(globalState)
-          syncIDB(globalState)
-          globalState.isWidgetActive = true
-          globalState.isSearching = false
-          globalState.searchQuery = ""
-          globalState.currentPage = 0
-          globalState.cursorIndex = 0
+          // syncLocalStorage(appState)
+          syncIDB(appState)
+          appState.isWidgetActive = true
+          appState.isSearching = false
+          appState.searchQuery = ""
+          appState.currentPage = 0
+          appState.cursorIndex = 0
         }
-        renderWidget(globalState)
+        renderWidget(appState)
       }
     }
   })
@@ -181,8 +181,6 @@ export async function startLinkMemo(option: LinkMemoOption) {
       // 【超重要】リンクヒントモード（自動リンク）が動いている間は、このメモ小窓の全ショトカを完全スルー
       if ((window as any).__dlt_link_hint_active__) return
 
-      const state = globalState
-
       // 1. 修飾キーがすべて false であること
       const noModifiers = !e.ctrlKey && !e.altKey && !e.shiftKey && !e.metaKey
 
@@ -193,9 +191,10 @@ export async function startLinkMemo(option: LinkMemoOption) {
         isAltDown = false
       }
 
-      // 1. 小窓が非アクティブな時
       if (!noModifiers) return
-      if (!state.isWidgetActive) {
+
+      // 1. 小窓が非アクティブな時
+      if (!appState.isWidgetActive) {
         const activeEl = document.activeElement
         const isInput =
           activeEl &&
@@ -207,13 +206,13 @@ export async function startLinkMemo(option: LinkMemoOption) {
           e.preventDefault()
           e.stopPropagation()
           // syncLocalStorage(state)
-          syncIDB(globalState)
-          state.isWidgetActive = true
-          state.isSearching = false
-          state.searchQuery = ""
-          state.currentPage = 0
-          state.cursorIndex = 0
-          renderWidget(state)
+          syncIDB(appState)
+          appState.isWidgetActive = true
+          appState.isSearching = false
+          appState.searchQuery = ""
+          appState.currentPage = 0
+          appState.cursorIndex = 0
+          renderWidget(appState)
         }
         return
       }
@@ -222,7 +221,7 @@ export async function startLinkMemo(option: LinkMemoOption) {
       // 【絶対最優先】Escape キーの完全乗っ取り
       // -------------------------------------------------------------
       if (e.key === "Escape") {
-        if (state.isSearching) {
+        if (appState.isSearching) {
           e.preventDefault()
           e.stopPropagation()
           // 1段階目のEsc: 検索を終了して通常履歴モードへ
@@ -230,18 +229,18 @@ export async function startLinkMemo(option: LinkMemoOption) {
             "dlt-search-input",
           ) as HTMLInputElement
           if (input) input.blur()
-          state.isSearching = false
-          state.searchQuery = ""
-          state.searchResults = []
-          state.currentPage = 0
-          state.cursorIndex = 0
-          renderWidget(state)
-        } else if (state.isWidgetActive) {
+          appState.isSearching = false
+          appState.searchQuery = ""
+          appState.searchResults = []
+          appState.currentPage = 0
+          appState.cursorIndex = 0
+          renderWidget(appState)
+        } else if (appState.isWidgetActive) {
           e.preventDefault()
           e.stopPropagation()
           // 2段階目のEsc: 小窓を閉じる
-          state.isWidgetActive = false
-          renderWidget(state)
+          appState.isWidgetActive = false
+          renderWidget(appState)
         }
         return
       }
@@ -249,128 +248,102 @@ export async function startLinkMemo(option: LinkMemoOption) {
       // -------------------------------------------------------------
       // パターンA：右の検索欄に入力中の場合
       // -------------------------------------------------------------
-      if (state.isSearching) {
+      if (appState.isSearching) {
         if (e.isComposing) return
 
         // 現在のページに表示されている検索結果のサブセットを取得
-        const currentItems = getPagedItems(state)
+        const currentItems = getPagedItems(appState)
         const maxPage = Math.max(
           1,
-          Math.ceil(state.searchResults.length / state.numbersOfPage),
+          Math.ceil(appState.searchResults.length / appState.numbersOfPage),
         )
 
         if (e.key === "ArrowDown") {
           e.preventDefault()
           e.stopPropagation()
 
-          if (state.cursorIndex < currentItems.length - 1) {
+          if (appState.cursorIndex < currentItems.length - 1) {
             // ページ内で下に動く
-            state.cursorIndex++
+            appState.cursorIndex++
           } else {
             // ページの最末尾に達したとき
-            if (state.currentPage < maxPage - 1) {
-              state.currentPage++
-              state.cursorIndex = 0 // 次のページの先頭へ
+            if (appState.currentPage < maxPage - 1) {
+              appState.currentPage++
+              appState.cursorIndex = 0 // 次のページの先頭へ
             } else {
-              state.currentPage = 0 // 最終ページの最後なら、最初のページの最初へワープ！
-              state.cursorIndex = 0
+              appState.currentPage = 0 // 最終ページの最後なら、最初のページの最初へワープ！
+              appState.cursorIndex = 0
             }
           }
 
-          renderWidget(state)
+          renderWidget(appState)
           return
         }
         if (e.key === "ArrowUp") {
           e.preventDefault()
           e.stopPropagation()
-          if (state.cursorIndex > 0) {
+          if (appState.cursorIndex > 0) {
             // ページ内で上に動く
-            state.cursorIndex--
+            appState.cursorIndex--
           } else {
             // ページの先頭に達したとき
-            if (state.currentPage > 0) {
-              state.currentPage--
+            if (appState.currentPage > 0) {
+              appState.currentPage--
               // 前のページの最後のインデックス（10件切り出しなので、デクリメント後の要素数 - 1）
-              state.cursorIndex = getPagedItems(state).length - 1
+              appState.cursorIndex = getPagedItems(appState).length - 1
             } else {
               // 最初のページの最初なら、最終ページの最後へワープ！
-              state.currentPage = maxPage - 1
-              state.cursorIndex = getPagedItems(state).length - 1
+              appState.currentPage = maxPage - 1
+              appState.cursorIndex = getPagedItems(appState).length - 1
             }
           }
-          renderWidget(state)
+          renderWidget(appState)
           return
         }
-        // if (e.key === "ArrowRight") {
-        //   e.preventDefault() // input内でのカーソル移動を殺してページめくりに充てる
-        //   if (state.currentPage < maxPage - 1) {
-        //     state.currentPage++
-        //     state.cursorIndex = 0
-        //     renderWidget(state)
-        //   }
-        //   return
-        // }
-        // if (e.key === "ArrowLeft") {
-        //   e.preventDefault()
-        //   if (state.currentPage > 0) {
-        //     state.currentPage--
-        //     state.cursorIndex = 0
-        //     renderWidget(state)
-        //   }
-        //   return
-        // }
-        if (e.key === " " && state.searchQuery === "") {
+
+        if (e.key === " " && appState.searchQuery === "") {
           e.preventDefault()
           e.stopPropagation()
-          const at = getAt()
           // 1段階目のEsc: 検索を終了して通常履歴モードへ
           const input = document.getElementById(
             "dlt-search-input",
           ) as HTMLInputElement
           if (input) input.blur()
-          state.isSearching = false
-          state.searchQuery = ""
-          state.searchResults = []
-          state.currentPage = 0
-          state.cursorIndex = 0
+          appState.isSearching = false
+          appState.searchQuery = ""
+          appState.searchResults = []
+          appState.currentPage = 0
+          appState.cursorIndex = 0
 
-          handleSearch("", state)
-          executeLinkOperation(state.leftDock)
-          const timestamped = state.leftDock.map(link =>
-            useCount({ ...link, at }),
-          )
-          state.history = mergeLinksFast(state.history, timestamped).links
-          state.leftDock = []
-          localStorage.setItem(DLT_DOCK_KEY, JSON.stringify(state.leftDock))
-
-          handleSearch("", state)
-
-          const m = await scrapeAndMergeFgBg(true, state.history)
-          state.history = m.links
-
-          renderWidget(state)
+          handleSearch("", appState)
+          executeLinkOperation(appState.leftDock, getAt())
+          handleSearch("", appState)
+          renderWidget(appState)
+          return
         }
-        if (e.key === "Backspace" && state.searchQuery === "") {
-          e.preventDefault()
-          e.stopPropagation()
-          state.leftDock = []
-          localStorage.setItem(DLT_DOCK_KEY, JSON.stringify(state.leftDock))
-          handleSearch("", state)
-          renderWidget(state)
+        if (e.key === "Backspace" && appState.searchQuery === "") {
+          appState.leftDock = []
+          localStorage.setItem(DLT_DOCK_KEY, JSON.stringify(appState.leftDock))
+          handleSearch("", appState)
+          renderWidget(appState)
+          return
         }
 
         if (e.key === "Enter" && !e.isComposing) {
           e.preventDefault()
           e.stopPropagation()
-          const target = currentItems[state.cursorIndex]
+          const target = currentItems[appState.cursorIndex]
           if (target) {
             const targetUpdated = useCount({ ...target, at: getAt() })
-            state.leftDock.push(targetUpdated)
+            appState.leftDock.push(targetUpdated)
             // 💡 localStorage にも保存して他タブに通知
-            localStorage.setItem(DLT_DOCK_KEY, JSON.stringify(state.leftDock))
+            localStorage.setItem(
+              DLT_DOCK_KEY,
+              JSON.stringify(appState.leftDock),
+            )
 
-            mergeLinksToIDB([targetUpdated], state.history).then(m => {
-              state.history = m.links
+            mergeLinksToIDB([targetUpdated], appState.history).then(m => {
+              appState.history = m.links
             })
 
             // const history = [
@@ -380,11 +353,11 @@ export async function startLinkMemo(option: LinkMemoOption) {
             // state.history = history
             // localStorage.setItem(DLT_HISTORY_KEY, JSON.stringify(history))
 
-            state.searchQuery = ""
-            state.currentPage = 0
-            state.cursorIndex = 0
-            handleSearch("", state)
-            renderWidget(state)
+            appState.searchQuery = ""
+            appState.currentPage = 0
+            appState.cursorIndex = 0
+            handleSearch("", appState)
+            renderWidget(appState)
 
             const input = document.getElementById(
               "dlt-search-input",
@@ -398,12 +371,12 @@ export async function startLinkMemo(option: LinkMemoOption) {
         }
 
         if (e.key === "Tab") {
-          await executeCopy(state.leftDock.reverse())
-          state.leftDock = []
-          state.isWidgetActive = false
+          await executeCopy(appState.leftDock.reverse())
+          appState.leftDock = []
+          appState.isWidgetActive = false
+          return
         }
 
-        // 通常の文字入力はブラウザ標準にパスする
         return
       }
 
@@ -415,27 +388,27 @@ export async function startLinkMemo(option: LinkMemoOption) {
         e.stopPropagation()
         const index = Number(e.key) - 1
         console.log("index", index)
-        state.leftDock.splice(index, 1)
-        renderWidget(state)
+        appState.leftDock.splice(index, 1)
+        renderWidget(appState)
         return
       }
 
       if (option.toggleKeys.includes(e.key)) {
         e.preventDefault()
         e.stopPropagation()
-        state.isWidgetActive = false
-        renderWidget(state)
+        appState.isWidgetActive = false
+        renderWidget(appState)
         return
       }
 
       if (option.searchKeys.includes(e.key)) {
         e.preventDefault()
         e.stopPropagation()
-        state.isSearching = true
-        state.currentPage = 0
-        state.cursorIndex = 0
-        handleSearch("", state) // 全件ヒット状態にする
-        renderWidget(state)
+        appState.isSearching = true
+        appState.currentPage = 0
+        appState.cursorIndex = 0
+        handleSearch("", appState) // 全件ヒット状態にする
+        renderWidget(appState)
 
         const input = document.getElementById(
           "dlt-search-input",
@@ -446,112 +419,111 @@ export async function startLinkMemo(option: LinkMemoOption) {
         return
       }
 
-      const currentItems = getPagedItems(state)
+      const currentItems = getPagedItems(appState)
       const maxPage = Math.max(
         1,
-        Math.ceil(state.history.length / state.numbersOfPage),
+        Math.ceil(appState.history.length / appState.numbersOfPage),
       )
 
       switch (e.key) {
-        case "ArrowDown":
+        case "ArrowDown": {
           e.preventDefault()
           e.stopPropagation()
 
-          if (state.cursorIndex < currentItems.length - 1) {
+          if (appState.cursorIndex < currentItems.length - 1) {
             // ページ内で下に動く
-            state.cursorIndex++
+            appState.cursorIndex++
           } else {
             // ページの最末尾に達したとき
-            if (state.currentPage < maxPage - 1) {
-              state.currentPage++
-              state.cursorIndex = 0 // 次のページの先頭へ
+            if (appState.currentPage < maxPage - 1) {
+              appState.currentPage++
+              appState.cursorIndex = 0 // 次のページの先頭へ
             } else {
-              state.currentPage = 0 // 最終ページの最後なら、最初のページの最初へワープ！
-              state.cursorIndex = 0
+              appState.currentPage = 0 // 最終ページの最後なら、最初のページの最初へワープ！
+              appState.cursorIndex = 0
             }
           }
           break
-        case "ArrowUp":
+        }
+        case "ArrowUp": {
           e.preventDefault()
           e.stopPropagation()
-          if (state.cursorIndex > 0) {
+          if (appState.cursorIndex > 0) {
             // ページ内で上に動く
-            state.cursorIndex--
+            appState.cursorIndex--
           } else {
             // ページの先頭に達したとき
-            if (state.currentPage > 0) {
-              state.currentPage--
+            if (appState.currentPage > 0) {
+              appState.currentPage--
               // 前のページの最後のインデックス（10件切り出しなので、デクリメント後の要素数 - 1）
-              state.cursorIndex = getPagedItems(state).length - 1
+              appState.cursorIndex = getPagedItems(appState).length - 1
             } else {
               // 最初のページの最初なら、最終ページの最後へワープ！
-              state.currentPage = maxPage - 1
-              state.cursorIndex = getPagedItems(state).length - 1
+              appState.currentPage = maxPage - 1
+              appState.cursorIndex = getPagedItems(appState).length - 1
             }
           }
           break
-        case "ArrowRight":
+        }
+        case "ArrowRight": {
           e.preventDefault()
           e.stopPropagation()
-          if (state.currentPage < maxPage - 1) {
-            state.currentPage++
-            state.cursorIndex = 0
+          if (appState.currentPage < maxPage - 1) {
+            appState.currentPage++
+            appState.cursorIndex = 0
           }
           break
-        case "ArrowLeft":
+        }
+        case "ArrowLeft": {
           e.preventDefault()
           e.stopPropagation()
-          if (state.currentPage > 0) {
-            state.currentPage--
-            state.cursorIndex = 0
+          if (appState.currentPage > 0) {
+            appState.currentPage--
+            appState.cursorIndex = 0
           }
           break
+        }
         case "Enter": {
           e.preventDefault()
           e.stopPropagation()
-          const target = currentItems[state.cursorIndex]
+          const target = currentItems[appState.cursorIndex]
           if (!target) return
-          if (state.leftDock.some(l => l.id === target.id)) {
-            state.leftDock = state.leftDock.filter(l => l.id !== target.id)
+          if (appState.leftDock.some(l => l.id === target.id)) {
+            appState.leftDock = appState.leftDock.filter(
+              l => l.id !== target.id,
+            )
           } else {
-            state.leftDock.unshift(target)
+            appState.leftDock.unshift(target)
           }
-          localStorage.setItem(DLT_DOCK_KEY, JSON.stringify(state.leftDock))
+          localStorage.setItem(DLT_DOCK_KEY, JSON.stringify(appState.leftDock))
           break
         }
-        case "Backspace":
+        case "Backspace": {
           e.preventDefault()
           e.stopPropagation()
-          state.leftDock = []
-          localStorage.setItem(DLT_DOCK_KEY, JSON.stringify(state.leftDock))
+          appState.leftDock = []
+          localStorage.setItem(DLT_DOCK_KEY, JSON.stringify(appState.leftDock))
           break
+        }
         case " ": {
           e.preventDefault()
           e.stopPropagation()
-          const at = getAt()
-          executeLinkOperation(state.leftDock)
-          const timestamped = state.leftDock.map(link =>
-            useCount({ ...link, at }),
-          )
-          state.history = mergeLinksFast(state.history, timestamped).links
-          state.leftDock = []
-          localStorage.setItem(DLT_DOCK_KEY, JSON.stringify(state.leftDock))
-          const m = await scrapeAndMergeFgBg(true, state.history)
-          state.history = m.links
+          executeLinkOperation(appState.leftDock, getAt())
           break
         }
-        case "Tab":
+        case "Tab": {
           e.preventDefault()
           e.stopPropagation()
-          await executeCopy(state.leftDock.reverse())
-          state.leftDock = []
-          state.isWidgetActive = false
+          await executeCopy(appState.leftDock.reverse())
+          appState.leftDock = []
+          appState.isWidgetActive = false
           break
+        }
         case "b": {
           e.preventDefault()
           e.stopPropagation()
           // backup
-          const msg = await backupLinks(state.history)
+          const msg = await backupLinks(appState.history)
           console.log(msg)
           showToast(msg)
           break
@@ -560,9 +532,9 @@ export async function startLinkMemo(option: LinkMemoOption) {
           e.preventDefault()
           e.stopPropagation()
           // get
-          const restored = await restoreLinks(state.history)
+          const restored = await restoreLinks(appState.history)
           console.log("restored links:", restored)
-          state.history = restored
+          appState.history = restored
           break
         }
         // case "q": {
@@ -570,11 +542,10 @@ export async function startLinkMemo(option: LinkMemoOption) {
         // }
       }
 
-      globalState = { ...state }
-      renderWidget(globalState)
+      renderWidget(appState)
       console.log(
         "history(5):",
-        globalState.history.slice(0, 5).map(link => link.title),
+        appState.history.slice(0, 5).map(link => link.title),
       )
     },
     true, // キャプチャフェーズ
@@ -840,7 +811,7 @@ async function executeCopy(links: PostLink[]) {
   }
 }
 
-function executeLinkOperation(links: PostLink[]) {
+function executeLinkOperation(links: PostLink[], at: string) {
   console.log("🚚 出荷実行!! リンク数:", links.length, links)
 
   // 💡 リンクヒント起動の合図となるフラグを立てる
@@ -882,7 +853,7 @@ function executeLinkOperation(links: PostLink[]) {
                     input = element.querySelector(":scope > input.drg_in")
                   }
 
-                  if (!input) return state
+                  if (!input) return
                   input.classList.add("shw")
                   input.value = postLinkTextList(links)
                   console.log("input.value =", input.value)
@@ -899,12 +870,22 @@ function executeLinkOperation(links: PostLink[]) {
                   input.dispatchEvent(enterEvent)
                   // ;(window as any).__dlt_link_hint_active__ = false
 
-                  globalState.leftDock = []
+                  const timestamped = links.map(link =>
+                    useCount({ ...link, at }),
+                  )
+                  const res = mergeLinksFast(appState.history, timestamped)
+                  appState.leftDock = []
+
+                  setTimeout(async () => {
+                    const m = await scrapeAndMergeFgBg(true, res.links)
+                    appState.history = m.links
+                    renderWidget(appState)
+                  }, 200)
+
                   localStorage.setItem(
                     DLT_DOCK_KEY,
-                    JSON.stringify(globalState.leftDock),
+                    JSON.stringify(appState.leftDock),
                   )
-                  return { executed: true }
                 },
               },
             ],
