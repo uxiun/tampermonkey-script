@@ -45,7 +45,7 @@ let globalState: AppState = {
   leftDock: [],
   currentPage: 0,
   cursorIndex: 0,
-  numbersOfPage: 12,
+  numbersOfPage: 10,
   searchQuery: "",
   searchResults: [],
   isSearching: false,
@@ -60,7 +60,16 @@ async function syncIDB(state: AppState) {
   state.history = await getAllLinksFromIDB()
 }
 
-export async function startLinkMemo() {
+interface LinkMemoOption {
+  toggleKeys: string[]
+  searchKeys: string[]
+}
+
+export async function startLinkMemo(option: LinkMemoOption) {
+  if (option.toggleKeys.some(key => option.searchKeys.includes(key))) {
+    console.log("option key は被らないようにしてください")
+    return
+  }
   console.log("🚀 startLinkMemo")
 
   // 1. 初回起動時にIDBから全件取得してメモリ(globalState.history)にロード
@@ -174,6 +183,9 @@ export async function startLinkMemo() {
 
       const state = globalState
 
+      // 1. 修飾キーがすべて false であること
+      const noModifiers = !e.ctrlKey && !e.altKey && !e.shiftKey && !e.metaKey
+
       if (e.code === "AltLeft") {
         e.preventDefault()
         isAltDown = true
@@ -182,6 +194,7 @@ export async function startLinkMemo() {
       }
 
       // 1. 小窓が非アクティブな時
+      if (!noModifiers) return
       if (!state.isWidgetActive) {
         const activeEl = document.activeElement
         const isInput =
@@ -190,7 +203,7 @@ export async function startLinkMemo() {
             activeEl.tagName === "TEXTAREA" ||
             (activeEl as HTMLElement).isContentEditable)
 
-        if ((e.key === "s" || e.key === "S") && !isInput) {
+        if (option.toggleKeys.includes(e.key) && !isInput) {
           e.preventDefault()
           e.stopPropagation()
           // syncLocalStorage(state)
@@ -209,10 +222,9 @@ export async function startLinkMemo() {
       // 【絶対最優先】Escape キーの完全乗っ取り
       // -------------------------------------------------------------
       if (e.key === "Escape") {
-        e.preventDefault()
-        e.stopPropagation()
-
         if (state.isSearching) {
+          e.preventDefault()
+          e.stopPropagation()
           // 1段階目のEsc: 検索を終了して通常履歴モードへ
           const input = document.getElementById(
             "dlt-search-input",
@@ -223,11 +235,14 @@ export async function startLinkMemo() {
           state.searchResults = []
           state.currentPage = 0
           state.cursorIndex = 0
-        } else {
+          renderWidget(state)
+        } else if (state.isWidgetActive) {
+          e.preventDefault()
+          e.stopPropagation()
           // 2段階目のEsc: 小窓を閉じる
           state.isWidgetActive = false
+          renderWidget(state)
         }
-        renderWidget(state)
         return
       }
 
@@ -380,7 +395,23 @@ export async function startLinkMemo() {
       // -------------------------------------------------------------
       // パターンB：右の自動履歴欄に疑似フォーカス中の場合
       // -------------------------------------------------------------
-      if (e.key === "/" || e.key === "d" || e.key === "l") {
+      if (e.key >= "0" && e.key <= "9") {
+        e.preventDefault()
+        e.stopPropagation()
+        const index = Number(e.key) - 1
+        console.log("index", index)
+        state.leftDock.splice(index, 1)
+        renderWidget(state)
+        return
+      }
+
+      if (option.toggleKeys.includes(e.key)) {
+        state.isWidgetActive = false
+        renderWidget(state)
+        return
+      }
+
+      if (option.searchKeys.includes(e.key)) {
         e.preventDefault()
         e.stopPropagation()
         state.isSearching = true
@@ -397,9 +428,6 @@ export async function startLinkMemo() {
         }
         return
       }
-
-      e.preventDefault()
-      e.stopPropagation()
 
       const currentItems = getPagedItems(state)
       const maxPage = Math.max(
@@ -492,9 +520,6 @@ export async function startLinkMemo() {
         case "Tab":
           await executeCopy(state.leftDock.reverse())
           state.leftDock = []
-          state.isWidgetActive = false
-          break
-        case "s":
           state.isWidgetActive = false
           break
         case "b": {
