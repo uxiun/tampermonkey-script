@@ -150,6 +150,7 @@ function updateScrapedFgBg(r: ScrapeResult, cache: PostLink[]) {
   result = [
     ...result,
     ...updateListLinks(linkMap)(r.list),
+    // 吊るし輪郭(main) ではなくリストに含まれてもいないfg/bgの輪郭のみ更新する
     ...updater(r.fg.filter(notIn)),
     ...updater(r.bg.filter(notIn)),
   ]

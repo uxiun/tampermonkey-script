@@ -6,6 +6,7 @@ import {
   removeDuplicateOrEmpty,
 } from "./dlt-storage"
 import { dbg } from "@/pure/utils"
+import { showToast } from "@/pure/component"
 
 type GetLinkOption = {
   limitOwn: boolean
@@ -192,6 +193,8 @@ export interface ScrapeResult {
 
 export const scrapeWithFgBg = (limitOwn = true) => {
   console.log(`scrapeWithFgBg(limitOwn: ${limitOwn})`)
+  showToast("🔄", 500)
+
   const r: ScrapeResult = {
     list: [],
     fg: [],
@@ -228,14 +231,36 @@ export const scrapeWithFgBg = (limitOwn = true) => {
     r.bg = [...r.bg, ...bg]
   }
 
-  const el = document.querySelector(`.bln.hng${limitOwn ? ".I" : ""}`)
-  if (!el) return r
+  const mainBln = document.querySelector(`.bln.hng${limitOwn ? ".I" : ""}`)
+  if (!mainBln) return r
 
-  const [main] = getLinkAuto(el)
+  const [main] = getLinkAuto(mainBln)
   r.main = main
   const listIds = r.list.map(l => l.id)
-  if (el.classList.contains("top")) r.main.bg = listIds
-  else if (el.classList.contains("btm")) r.main.fg = listIds
+  if (mainBln.classList.contains("top")) {
+    r.main.bg = listIds
+
+    const fg = Array.from(
+      mainBln.querySelectorAll(`:scope > .oln.ikon${limitOwn ? ".I" : ""}`),
+    )
+      .flatMap(getLinkAuto)
+      .map(l => ({ ...l, bg: [main.id] }))
+
+    r.fg = [...r.fg, ...fg]
+    r.main.fg = fg.map(l => l.id)
+  } else if (mainBln.classList.contains("btm")) {
+    r.main.fg = listIds
+
+    const bg = Array.from(
+      mainBln.querySelectorAll(`.bg > .oln.ikon${limitOwn ? ".I" : ""}`),
+    )
+      .flatMap(getLinkAuto)
+      .map(l => ({ ...l, fg: [main.id] }))
+
+    r.bg = [...r.bg, ...bg]
+    r.main.bg = bg.map(l => l.id)
+  }
+
   console.log("scrapeWithFgBg:", r)
   return r
 }

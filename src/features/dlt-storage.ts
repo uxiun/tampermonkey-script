@@ -18,10 +18,33 @@ export interface PostLink {
   bgc?: number
 }
 
+export enum Visibility {
+  Everyone = "everyone",
+  OnlyMe = "me",
+}
+
+export const VISIBILITY_MAP = {
+  [Visibility.Everyone]: "0",
+  [Visibility.OnlyMe]: "14",
+}
+export const VISIBILITY_JP = {
+  [Visibility.Everyone]: "公開",
+  [Visibility.OnlyMe]: "未公開",
+}
+
+export const nextVisValue = (current: string): string => {
+  const a = Object.entries(VISIBILITY_MAP)
+  const i = a.findIndex(([vis, value]) => value === current)
+  const [_, value] = a[i + 1]
+  console.log({ current, value })
+  return value
+}
+
 export interface LinkUpdate {
   link: PostLink
   update: Inserted | Modify
 }
+
 type Inserted = { type: "inserted" }
 type Modify = {
   type: "modify"

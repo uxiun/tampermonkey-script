@@ -30,7 +30,6 @@ function generateDynamicKeys(
 
 // 共通のプロパティ
 interface BaseTarget extends Partial<TargetOption> {
-  elements: () => NodeListOf<Element> | Element[]
   keys: string[]
 }
 
@@ -39,20 +38,27 @@ interface TargetOption {
 }
 
 // 選択したらそこで終わる要素群
-interface TerminalTarget<S> extends BaseTarget {
+interface TerminalTarget<S, E extends HTMLElement> extends BaseTarget {
   type: "terminal"
-  action: (el: HTMLElement, state: S) => S | void
+  action: (el: E, state: S) => S | void | Promise<S> | Promise<void>
+  elements: () => NodeListOf<E> | E[]
 }
 
 // 選択したら、さらに次のヒントマップへ連鎖する要素群
 interface NonTerminalTarget<S> extends BaseTarget {
   type: "non-terminal"
-  action?: (el: HTMLElement, state: S) => S | void // 次の階層にいく前に状態を変えたい場合は任意で
+  elements: () => NodeListOf<Element> | Element[]
+  action?: (el: HTMLElement, state: S) => S | void | Promise<S> | Promise<void> // 次の階層にいく前に状態を変えたい場合は任意で
   hintMap: (el: HTMLElement) => HintMap<S> // 次の階層のHintMapを返す関数（必須）
 }
 
-// これらを合体させたものがターゲットの型
-type HintTarget<S> = TerminalTarget<S> | NonTerminalTarget<S>
+export function defineTerminalTarget<S, E extends HTMLElement>(
+  target: TerminalTarget<S, E>,
+): TerminalTarget<S, any> {
+  return target
+}
+
+type HintTarget<S> = TerminalTarget<S, any> | NonTerminalTarget<S>
 
 // 全体を束ねるHintMap構造
 export interface HintMap<S> {
@@ -65,7 +71,6 @@ export interface HintMap<S> {
 // ==========================================
 // 2. コアロジック（修正版 linkHint）
 // ==========================================
-
 export function linkHint<S>(hintMap: HintMap<S>, state: S): S {
   let newState = state
   const removeLabels = () => {
@@ -124,7 +129,7 @@ export function linkHint<S>(hintMap: HintMap<S>, state: S): S {
   let inputBuffer = ""
 
   // リスナーは常に「この階層（ターン）で唯一つだけ」登録
-  const keyListener = (e: KeyboardEvent) => {
+  const keyListener = async (e: KeyboardEvent) => {
     e.preventDefault()
     e.stopPropagation()
 
@@ -167,7 +172,7 @@ export function linkHint<S>(hintMap: HintMap<S>, state: S): S {
 
       // 1. アクションがあれば実行して状態を更新
       if (t.action) {
-        const res = t.action(match.element, state)
+        const res = await t.action(match.element, state)
         if (res) {
           newState = res
           if (hintMap.showState) hintMap.showState(newState)
@@ -197,4 +202,19 @@ export function linkHint<S>(hintMap: HintMap<S>, state: S): S {
 
   window.addEventListener("keydown", keyListener, true)
   return newState
+}
+
+export function applyAll<S, E extends HTMLElement>(
+  target: {
+    elements: () => NodeListOf<E> | E[]
+    action: (el: E, state: S) => S | void
+  },
+  state: S,
+): S {
+  let s = state
+  for (const el of target.elements()) {
+    const res = target.action(el, state)
+    if (res) s = res
+  }
+  return s
 }

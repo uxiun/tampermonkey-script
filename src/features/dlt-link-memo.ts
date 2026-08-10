@@ -25,6 +25,7 @@ import {
 import { dltkeys } from "./keys"
 import { HintMap, linkHint } from "./link-hint"
 import { candidateTip } from "./dlt-component"
+import { dltShortcuts } from "./dlt-shortcuts"
 
 export interface AppState {
   history: PostLink[]
@@ -191,8 +192,6 @@ export async function startLinkMemo(option: LinkMemoOption) {
         isAltDown = false
       }
 
-      if (!noModifiers) return
-
       // 1. 小窓が非アクティブな時
       if (!appState.isWidgetActive) {
         const activeEl = document.activeElement
@@ -202,7 +201,7 @@ export async function startLinkMemo(option: LinkMemoOption) {
             activeEl.tagName === "TEXTAREA" ||
             (activeEl as HTMLElement).isContentEditable)
 
-        if (option.toggleKeys.includes(e.key) && !isInput) {
+        if (option.toggleKeys.includes(e.key) && !isInput && noModifiers) {
           e.preventDefault()
           e.stopPropagation()
           // syncLocalStorage(state)
@@ -214,8 +213,13 @@ export async function startLinkMemo(option: LinkMemoOption) {
           appState.cursorIndex = 0
           renderWidget(appState)
         }
+
+        dltShortcuts(e)
+
         return
       }
+
+      if (!noModifiers) return
 
       // -------------------------------------------------------------
       // 【絶対最優先】Escape キーの完全乗っ取り

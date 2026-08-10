@@ -1,3 +1,6 @@
+export const sleep = (ms: number) =>
+  new Promise(resolve => setTimeout(resolve, ms))
+
 export const removePrefix = (prefix: string, text: string) =>
   text.startsWith(prefix) ? text.slice(prefix.length) : text
 
