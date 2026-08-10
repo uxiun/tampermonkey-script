@@ -26,6 +26,7 @@ import { dltkeys } from "./keys"
 import { HintMap, linkHint } from "./link-hint"
 import { candidateTip } from "./dlt-component"
 import { dltShortcuts } from "./dlt-shortcuts"
+import outlinerShortcuts from "./dlt-outliner"
 
 export interface AppState {
   history: PostLink[]
@@ -214,6 +215,7 @@ export async function startLinkMemo(option: LinkMemoOption) {
           renderWidget(appState)
         }
 
+        outlinerShortcuts(e)
         dltShortcuts(e)
 
         return
