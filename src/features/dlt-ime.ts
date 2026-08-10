@@ -52,6 +52,8 @@ let imeState: IMEState = {
   target: null,
 }
 
+export const isImeActive = () => imeState.isActive
+
 // function syncLocalStorage(state: IMEState) {
 //   state.history = JSON.parse(localStorage.getItem(DLT_HISTORY_KEY) || "[]")
 // }
@@ -65,44 +67,6 @@ function searchHistoryFast(option: IMEOption, state: IMEState) {
     0,
     option.suggestionNumbers,
   )
-
-  // const keywords = state.query.split(/\s+/).filter(Boolean)
-  // if (keywords.length === 0) return []
-
-  // const results: { link: PostLink; score: number }[] = []
-
-  // for (const link of state.history) {
-  //   const titleLower = link.title.toLowerCase()
-
-  //   let isMatch = true
-  //   let totalScore = 0
-
-  //   for (let j = 0; j < keywords.length; j++) {
-  //     const kw = keywords[j].toLowerCase()
-  //     const idx = titleLower.indexOf(kw)
-
-  //     if (idx === -1) {
-  //       isMatch = false
-  //       break
-  //     }
-
-  //     // 【スコアリング・アルゴリズム】
-  //     let kwScore = Math.max(0, 100 - idx)
-  //     if (titleLower === kw) kwScore += 500
-  //     if (idx === 0 || titleLower.charAt(idx - 1) === " ") kwScore += 50
-
-  //     totalScore += kwScore
-  //   }
-
-  //   if (isMatch) {
-  //     results.push({ link, score: totalScore })
-  //   }
-  // }
-
-  // return results
-  //   .sort((a, b) => b.score - a.score)
-  //   .map(r => r.link)
-  //   .slice(0, option.suggestionNumbers)
 }
 
 function runSearch(option: IMEOption, state: IMEState) {
@@ -139,8 +103,6 @@ function renderWidget(state: IMEState, inlinePopup: InlineSuggestPopup) {
 export function dltIME(option = defaultIMEOption) {
   if ((window as any).__dlt_ime__) return
   ;(window as any).__dlt_ime__ = true
-
-  console.log("IME ready!")
 
   const inlinePopup = new InlineSuggestPopup()
 
@@ -267,6 +229,7 @@ export function dltIME(option = defaultIMEOption) {
       if (e.key === "Tab") {
         e.preventDefault()
         e.stopPropagation()
+        e.stopImmediatePropagation()
 
         const len = imeState.candidates.length
         if (e.shiftKey) {
@@ -284,6 +247,7 @@ export function dltIME(option = defaultIMEOption) {
         if (imeState.selectedIndex !== -1) {
           e.preventDefault()
           e.stopPropagation()
+          e.stopImmediatePropagation()
 
           const selected = imeState.candidates[imeState.selectedIndex]
           const replacement = postLinkText(selected)
@@ -317,6 +281,7 @@ export function dltIME(option = defaultIMEOption) {
       if (e.key === "Escape") {
         e.preventDefault()
         e.stopPropagation()
+        e.stopImmediatePropagation()
         imeState.isActive = false
         inlinePopup.hide()
         return

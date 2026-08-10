@@ -27,6 +27,7 @@ import { HintMap, linkHint } from "./link-hint"
 import { candidateTip } from "./dlt-component"
 import { dltShortcuts } from "./dlt-shortcuts"
 import outlinerShortcuts from "./dlt-outliner"
+import { isImeActive } from "./dlt-ime"
 
 export interface AppState {
   history: PostLink[]
@@ -182,6 +183,7 @@ export async function startLinkMemo(option: LinkMemoOption) {
 
       // 【超重要】リンクヒントモード（自動リンク）が動いている間は、このメモ小窓の全ショトカを完全スルー
       if ((window as any).__dlt_link_hint_active__) return
+      if (isImeActive()) return
 
       // 1. 修飾キーがすべて false であること
       const noModifiers = !e.ctrlKey && !e.altKey && !e.shiftKey && !e.metaKey
@@ -820,8 +822,6 @@ async function executeCopy(links: PostLink[]) {
 function executeLinkOperation(links: PostLink[], at: string) {
   console.log("🚚 出荷実行!! リンク数:", links.length, links)
 
-  // 💡 リンクヒント起動の合図となるフラグを立てる
-  // ;(window as any).__dlt_link_hint_active__ = true
   interface State {
     executed: boolean
   }
@@ -874,7 +874,6 @@ function executeLinkOperation(links: PostLink[], at: string) {
                   })
 
                   input.dispatchEvent(enterEvent)
-                  // ;(window as any).__dlt_link_hint_active__ = false
 
                   const timestamped = links.map(link =>
                     useCount({ ...link, at }),
