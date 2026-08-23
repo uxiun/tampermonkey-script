@@ -201,16 +201,18 @@ export const scrapeWithFgBg = (limitOwn = true) => {
     bg: [],
   }
 
-  const items = getListItems()
+  const items = getListItems(limitOwn)
 
   for (const bln of items) {
     const [current] = getLinkAuto(bln)
+    if (!current) continue
 
     const fg = Array.from(
       bln.querySelectorAll(`:scope > .oln.ikon${limitOwn ? ".I" : ""}`),
     )
       .flatMap(getLinkAuto)
       .map(l => ({ ...l, bg: [current.id] }))
+
     const bg = Array.from(
       bln.querySelectorAll(`.bg > .oln.ikon${limitOwn ? ".I" : ""}`),
     )
@@ -235,30 +237,74 @@ export const scrapeWithFgBg = (limitOwn = true) => {
   if (!mainBln) return r
 
   const [main] = getLinkAuto(mainBln)
+  if (!main) return r
+
   r.main = main
+
+  // 1. main の fgc / bgc をDOMから正しく取得してセット
+  const mainCnt = fgBgCount(mainBln)
+  r.main.fgc = mainCnt.fg
+  r.main.bgc = mainCnt.bg
+
   const listIds = r.list.map(l => l.id)
-  if (mainBln.classList.contains("top")) {
-    r.main.bg = listIds
 
-    const fg = Array.from(
-      mainBln.querySelectorAll(`:scope > .oln.ikon${limitOwn ? ".I" : ""}`),
+  // 2. URLパラメータとクラス名の両方でページ種別を判定
+  const pageType = getPageType()
+  const isFgPage = pageType === "fg" || mainBln.classList.contains("top")
+  const isBgPage = pageType === "bg" || mainBln.classList.contains("btm")
+
+  // ハンガー内の fg / bg アイコンを抽出
+  const hangerFg = Array.from(
+    mainBln.querySelectorAll(`:scope > .oln.ikon${limitOwn ? ".I" : ""}`),
+  )
+    .flatMap(getLinkAuto)
+    .map(l => ({ ...l, bg: [main.id] }))
+
+  const hangerBg = Array.from(
+    mainBln.querySelectorAll(`.bg > .oln.ikon${limitOwn ? ".I" : ""}`),
+  )
+    .flatMap(getLinkAuto)
+    .map(l => ({ ...l, fg: [main.id] }))
+
+  if (isFgPage) {
+    // fg一覧ページ: メインリストは main の bg（後景）
+    // ハンガー内の .bg（他人の輪郭など）も結合
+    const combinedBgIds = Array.from(
+      new Set([...listIds, ...hangerBg.map(l => l.id)]),
     )
-      .flatMap(getLinkAuto)
-      .map(l => ({ ...l, bg: [main.id] }))
 
-    r.fg = [...r.fg, ...fg]
-    r.main.fg = fg.map(l => l.id)
-  } else if (mainBln.classList.contains("btm")) {
-    r.main.fg = listIds
+    r.main.fg = hangerFg.map(l => l.id)
+    r.main.bg = combinedBgIds
 
-    const bg = Array.from(
-      mainBln.querySelectorAll(`.bg > .oln.ikon${limitOwn ? ".I" : ""}`),
+    r.fg = [...r.fg, ...hangerFg]
+    r.bg = [...r.bg, ...hangerBg]
+
+    // 3. リスト側要素の fg に main.id を双方向補填
+    r.list.forEach(item => {
+      if (!item.fg) item.fg = []
+      if (!item.fg.includes(main.id)) {
+        item.fg.unshift(main.id)
+      }
+    })
+  } else if (isBgPage) {
+    // bg一覧ページ: メインリストは main の fg（前景）
+    const combinedFgIds = Array.from(
+      new Set([...listIds, ...hangerFg.map(l => l.id)]),
     )
-      .flatMap(getLinkAuto)
-      .map(l => ({ ...l, fg: [main.id] }))
 
-    r.bg = [...r.bg, ...bg]
-    r.main.bg = bg.map(l => l.id)
+    r.main.fg = combinedFgIds
+    r.main.bg = hangerBg.map(l => l.id)
+
+    r.fg = [...r.fg, ...hangerFg]
+    r.bg = [...r.bg, ...hangerBg]
+
+    // リスト側要素の bg に main.id を双方向補填
+    r.list.forEach(item => {
+      if (!item.bg) item.bg = []
+      if (!item.bg.includes(main.id)) {
+        item.bg.unshift(main.id)
+      }
+    })
   }
 
   console.log("scrapeWithFgBg:", r)
@@ -269,9 +315,21 @@ const fgBgCount = (bln: Element) => {
   const fgCount = bln.querySelector(":scope > .cnt")?.textContent?.slice(1, -1)
   const bgCount = bln.querySelector(".bg > .cnt")?.textContent?.slice(1, -1)
 
+  const getNum = (cnt: string | undefined) => {
+    if (cnt === undefined) return undefined
+    if (Number.isInteger(Number(cnt))) return Number(cnt)
+    for (const ope of ["+", "-"]) {
+      if (cnt.includes(ope)) {
+        const [base, add] = cnt.split(ope)
+        return parseInt(base) + (ope === "+" ? 1 : -1) * parseInt(add)
+      }
+    }
+    return undefined
+  }
+
   return {
-    fg: fgCount ? Number(fgCount) : undefined,
-    bg: bgCount ? Number(bgCount) : undefined,
+    fg: getNum(fgCount),
+    bg: getNum(bgCount),
   }
 }
 

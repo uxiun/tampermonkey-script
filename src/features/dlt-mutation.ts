@@ -6,6 +6,7 @@ import {
 } from "./dlt-db"
 import { getAllMyLinkFromPage, getListItems, scrapeWithFgBg } from "./dlt-dom"
 import { PostLink } from "./dlt-storage"
+import { syncRenderLinkMemo } from "./dlt-link-memo"
 
 const state: {
   history: PostLink[]
@@ -15,12 +16,6 @@ const state: {
 
 async function syncIDB() {
   state.history = await getAllLinksFromIDB()
-}
-
-async function mergeLinks(links: PostLink[]) {
-  const m = await mergeLinksToIDB(links, state.history)
-  state.history = m.links
-  return m
 }
 
 export async function watchDltPage() {
@@ -57,6 +52,8 @@ export async function watchDltPage() {
           .join(" "),
       )
     }
+
+    syncRenderLinkMemo(res.links)
   }
 
   // 💡 タイマー付きで安全に呼び出すデバウンス関数

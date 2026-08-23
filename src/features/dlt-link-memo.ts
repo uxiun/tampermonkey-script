@@ -63,6 +63,11 @@ async function syncIDB(state: AppState) {
   state.history = await getAllLinksFromIDB()
 }
 
+export async function syncRenderLinkMemo(links?: PostLink[]) {
+  appState.history = links ?? (await getAllLinksFromIDB())
+  renderWidget(appState)
+}
+
 interface LinkMemoOption {
   toggleKeys: string[]
   searchKeys: string[]
@@ -379,9 +384,11 @@ export async function startLinkMemo(option: LinkMemoOption) {
         }
 
         if (e.key === "Tab") {
-          await executeCopy(appState.leftDock.reverse())
-          appState.leftDock = []
-          appState.isWidgetActive = false
+          e.preventDefault()
+          e.stopPropagation()
+          const target = currentItems[appState.cursorIndex]
+          console.log(target)
+          showToast(JSON.stringify(target), 2000)
           return
         }
 
@@ -522,9 +529,10 @@ export async function startLinkMemo(option: LinkMemoOption) {
         case "Tab": {
           e.preventDefault()
           e.stopPropagation()
-          await executeCopy(appState.leftDock.reverse())
-          appState.leftDock = []
-          appState.isWidgetActive = false
+
+          const target = currentItems[appState.cursorIndex]
+          console.log(target)
+          showToast(JSON.stringify(target), 2000)
           break
         }
         case "b": {
@@ -551,10 +559,6 @@ export async function startLinkMemo(option: LinkMemoOption) {
       }
 
       renderWidget(appState)
-      console.log(
-        "history(5):",
-        appState.history.slice(0, 5).map(link => link.title),
-      )
     },
     true, // キャプチャフェーズ
   )
@@ -882,10 +886,11 @@ function executeLinkOperation(links: PostLink[], at: string) {
                   appState.leftDock = []
 
                   setTimeout(async () => {
+                    console.log("after executeLinkOperation")
                     const m = await scrapeAndMergeFgBg(true, res.links)
                     appState.history = m.links
                     renderWidget(appState)
-                  }, 200)
+                  }, 300)
 
                   localStorage.setItem(
                     DLT_DOCK_KEY,

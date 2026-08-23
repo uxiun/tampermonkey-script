@@ -6,6 +6,7 @@ export interface CandidateTipOption {
   fgFontSize: string
   titleFontSize: string
   wrapTitle: boolean // default: false
+  fgLengthMax: number
 }
 
 export const candidateTip = (
@@ -28,7 +29,10 @@ export const candidateTip = (
     .map(fgId => idToLinkMap.get(fgId)?.title)
     .filter((title): title is string => Boolean(title))
 
-  const fgTitles = Array.from(new Set(rawFgTitles)).slice(0, 2)
+  const fgTitles = Array.from(new Set(rawFgTitles)).slice(
+    0,
+    option?.fgLengthMax,
+  )
 
   const fgHtml =
     option?.withFg === false || fgTitles.length === 0

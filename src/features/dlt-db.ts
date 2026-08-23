@@ -100,20 +100,21 @@ const updateListLinks = (src: LinkMap) => (listLinks: PostLink[]) => {
   listLinks.forEach(l => {
     const s = src.get(l.id)
     if (s) {
-      let mergedFg: string[]
-      let mergedBg: string[]
+      let mergedFg = Array.from(new Set(l.fg || []))
+      let mergedBg = Array.from(new Set(l.bg || []))
 
-      if ((l.fgc || 0) > 9 && (l.bgc || 0) > 9) {
+      if ((l.fgc || 0) > 9) {
         const fs = new Set(s.fg)
         l.fg?.reverse().forEach(id => fs.add(id))
         mergedFg = Array.from(fs).reverse()
+        l.fgc = Math.max(l.fgc || 0, mergedFg.length)
+      }
 
+      if ((l.bgc || 0) > 9) {
         const bs = new Set(s.bg)
         l.bg?.reverse().forEach(id => bs.add(id))
         mergedBg = Array.from(bs).reverse()
-      } else {
-        mergedFg = Array.from(new Set([...(l.fg || []), ...(s.fg || [])]))
-        mergedBg = Array.from(new Set([...(l.bg || []), ...(s.bg || [])]))
+        l.bgc = Math.max(l.bgc || 0, mergedBg.length)
       }
 
       result.push({
