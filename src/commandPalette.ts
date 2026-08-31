@@ -8,8 +8,16 @@ import {
   mergeLinksStorage,
   migrateLocalStorageToIDB,
 } from "./features/dlt-storage"
+import {
+  getAllCodesFromIDB,
+  getAllHansFromIDB,
+  Hanzi,
+  putCodesIDB,
+  putHansIDB,
+  ZhCode,
+} from "./features/ime"
 
-function showCommandPalette() {
+export function showCommandPalette() {
   if (document.getElementById("ac-palette")) return
 
   const container = document.createElement("div")
@@ -56,14 +64,56 @@ async function executeCommand(val: string) {
   console.log("実行するコマンド:", val)
 
   switch (val) {
+    case "ime hanzi": {
+      const res = await fetch(
+        new Request(
+          "https://raw.githubusercontent.com/uxiun/ime-table-convert/main/json/cqkm-cj5-21000.json",
+          // "../table/cqkm-cj5-21000.json",
+        ),
+      )
+      const hans: Hanzi[] = await res.json()
+      console.log("hans", hans)
+      putHansIDB(hans)
+      const hansStored = await getAllHansFromIDB()
+      console.log("hansStored", hansStored)
+      break
+    }
+    case "ime code": {
+      const res = await fetch(
+        new Request(
+          "https://raw.githubusercontent.com/uxiun/ime-table-convert/main/json/zi-spells-21000.json",
+        ),
+      )
+      const codes: ZhCode[] = await res.json()
+      console.log("codes", codes)
+      putCodesIDB(codes)
+      const codesStored = await getAllCodesFromIDB()
+      console.log("codesStored", codesStored)
+      if (codes.length > codesStored.length) {
+        for (const stored of codesStored) {
+          let sames = codes.filter(
+            code =>
+              code.zh === stored.zh &&
+              code.code === stored.code &&
+              code.schema === stored.schema,
+          )
+          if (sames.length > 1) console.log("重複", sames)
+        }
+      }
+      console.log("重複は以上")
+
+      break
+    }
+
     case "fgbg.delete":
       await deleteAllFgBg()
       break
 
-    case "migrate idb":
+    case "migrate idb": {
       const ok = confirm("LocalStorageからIndexedDBに移行しますか？")
       if (ok) migrateLocalStorageToIDB()
       break
+    }
     case "hello":
       console.log("hello, world!")
       break
@@ -96,6 +146,3 @@ async function executeCommand(val: string) {
     }
   }
 }
-
-console.log("AutoControl: commandPalette")
-showCommandPalette()

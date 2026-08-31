@@ -1,6 +1,7 @@
 import { isInput } from "@/pure/utils"
 import { getPageType } from "./dlt-dom"
 import togglePublicityDrw from "./dlt-toggle-publicity"
+import { showCommandPalette } from "@/commandPalette"
 
 export async function dltShortcuts(e: KeyboardEvent) {
   if (!e.isTrusted || (window as any).__dlt_link_hint_active__) return
@@ -31,12 +32,14 @@ export async function dltShortcuts(e: KeyboardEvent) {
       const kw = document.querySelector("input#kw")! as HTMLInputElement
       kw.focus()
     }
+    return
   }
 
   if ((!isInput() || e.ctrlKey) && e.key === "s") {
     e.preventDefault()
     e.stopPropagation()
     togglePublicityDrw()
+    return
   }
 
   if (
@@ -46,5 +49,11 @@ export async function dltShortcuts(e: KeyboardEvent) {
   ) {
     const query = (document.activeElement as HTMLInputElement).value
     window.location.href = `/?kw=${query}`
+    return
+  }
+
+  if (!isInput() && e.ctrlKey && e.key === "k") {
+    e.preventDefault()
+    showCommandPalette()
   }
 }
