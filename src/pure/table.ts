@@ -1,6 +1,6 @@
 import { Key } from "./key"
 
-const KANA_TABLE: [string, string][] = [
+export const KANA_TABLE: [string, string][] = [
   ["q", "。"],
   ["w", "て"],
   ["e", "は"],
@@ -45,6 +45,7 @@ const KANA_TABLE: [string, string][] = [
   ["kc", "ぼ"],
   ["k.", "む"],
   ["kb", "ふぉ"],
+  ["kj", "言"],
   ["lq", "ぢ"],
   ["lw", "め"],
   ["le", "け"],
@@ -89,12 +90,13 @@ const KANA_TABLE: [string, string][] = [
   ["sn", "ぴ"],
   ["sv", "ぽ"],
   ["d.", "ゔ"],
+  ["fr", "・"],
   ["jw", "ぶ"],
   ["je", "を"],
   ["jr", "。"],
   ["jf", "る"],
   ["jz", "自分"],
-  ["jx", "わたし"],
+  ["jx", "私"],
   ["jl", "おも"],
   ["iq", "ひゅ"],
   ["iw", "しゅ"],
@@ -121,9 +123,128 @@ const KANA_TABLE: [string, string][] = [
   ["oc", "じゃ"],
   ["o.", "ぎゃ"],
   ["ob", "にゃ"],
+  ["1k", "ぁ"],
+  ["2k", "ぃ"],
+  ["3k", "ぅ"],
+  ["4k", "ぇ"],
+  ["5k", "ぉ"],
+  ["1l", "ゃ"],
+  ["2l", "みゃ"],
+  ["3l", "みゅ"],
+  ["4l", "みょ"],
+  ["1i", "ゅ"],
+  ["2i", "びゃ"],
+  ["3i", "びゅ"],
+  ["4i", "びょ"],
+  ["1o", "ょ"],
+  ["2o", "ぴゃ"],
+  ["3o", "ぴゅ"],
+  ["4o", "ぴょ"],
+  ["/", "ー"],
+  ["d[", "「"],
+  ["d]", "」"],
+  ["[", "（"],
+  ["]", "）"],
 ]
 
-export const kana = (keys: Key[]): string | undefined => {
+const fullKana = {
+  // --- 清音（50音） ---
+  あ: "ア",
+  い: "イ",
+  う: "ウ",
+  え: "エ",
+  お: "オ",
+  か: "カ",
+  き: "キ",
+  く: "ク",
+  け: "ケ",
+  こ: "コ",
+  さ: "サ",
+  し: "シ",
+  す: "ス",
+  せ: "セ",
+  そ: "ソ",
+  た: "タ",
+  ち: "チ",
+  つ: "ツ",
+  て: "テ",
+  と: "ト",
+  な: "ナ",
+  に: "ニ",
+  ぬ: "ヌ",
+  ね: "ネ",
+  の: "ノ",
+  は: "ハ",
+  ひ: "ヒ",
+  ふ: "フ",
+  へ: "ヘ",
+  ほ: "ホ",
+  ま: "マ",
+  み: "ミ",
+  む: "ム",
+  め: "メ",
+  も: "モ",
+  や: "ヤ",
+  ゆ: "ユ",
+  よ: "ヨ",
+  ら: "ラ",
+  り: "リ",
+  る: "ル",
+  れ: "レ",
+  ろ: "ロ",
+  わ: "ワ",
+  を: "ヲ",
+  ん: "ン",
+
+  // --- 濁音 ---
+  が: "ガ",
+  ぎ: "ギ",
+  ぐ: "グ",
+  げ: "ゲ",
+  ご: "ゴ",
+  ざ: "ザ",
+  じ: "ジ",
+  ず: "ズ",
+  ぜ: "ゼ",
+  ぞ: "ゾ",
+  だ: "ダ",
+  ぢ: "ヂ",
+  づ: "ヅ",
+  で: "デ",
+  ど: "ド",
+  ば: "バ",
+  び: "ビ",
+  ぶ: "ブ",
+  べ: "ベ",
+  ぼ: "ボ",
+  ゔ: "ヴ",
+
+  // --- 半濁音 ---
+  ぱ: "パ",
+  ぴ: "ピ",
+  ぷ: "プ",
+  ぺ: "ペ",
+  ぽ: "ポ",
+
+  // --- 拗音・小書き文字 ---
+  ぁ: "ァ",
+  ぃ: "ィ",
+  ぅ: "ゥ",
+  ぇ: "ェ",
+  ぉ: "ォ",
+  っ: "ッ",
+  ゃ: "ャ",
+  ゅ: "ュ",
+  ょ: "ョ",
+  ゎ: "ヮ",
+
+  // --- 記号 ---
+  ー: "ー",
+}
+
+const fullKanaMap = new Map(Object.entries(fullKana))
+
+export const kana = (keys: string[]): string | undefined => {
   const kanaMap = new Map(KANA_TABLE)
   if (keys.length === 1) return kanaMap.get(keys[0])
   else if (keys.length === 2) {
@@ -132,3 +253,14 @@ export const kana = (keys: Key[]): string | undefined => {
     return kanaMap.get(keys.reverse().join(""))
   }
 }
+
+export const katakana = (keys: Key[]) => {
+  const hiragana = kana(keys)
+  if (hiragana) return hiraganaTokatakana(hiragana)
+}
+
+export const hiraganaTokatakana = (hiragana: string): string =>
+  hiragana
+    .split("")
+    .map(k => fullKanaMap.get(k) ?? k)
+    .join("")

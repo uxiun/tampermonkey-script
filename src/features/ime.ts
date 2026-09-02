@@ -1,8 +1,9 @@
 import { isInput, transpose } from "@/pure/utils"
 import { candidateTip } from "./dlt-component"
 import { getPopupPosition } from "@/pure/dom"
-import { Key, Single } from "@/pure/key"
+import { Key, KeyManager, Single } from "@/pure/key"
 import { showToast } from "@/pure/component"
+import { kana, katakana } from "@/pure/table"
 
 const DB_NAME = "ac_ime_db"
 const DB_VERSION = 2
@@ -60,7 +61,7 @@ export interface ZhWord {
   hans: Cqkm[]
 }
 
-type Schema = "cj5" | "cqkm" | "cqkm-xy"
+type Schema = "cj5" | "cqkm" | "cqkm-xy" | "hiragana" | "katakana"
 
 const HANZI_DEFAULT: Hanzi = {
   zh: "",
@@ -70,7 +71,7 @@ const HANZI_DEFAULT: Hanzi = {
   cqkmInitials: [],
 }
 
-type SyncMessage<T> = { type: "updated"; items: T[] }
+type SyncMessage<T> = { type: "updated" | "deleted"; items: T[] }
 
 const syncChannel = new BroadcastChannel("ac_ime_channel")
 
@@ -236,6 +237,30 @@ export async function putCodesIDB(codes: ZhCode[]): Promise<void> {
   })
 }
 
+export async function deleteWordsIDB(words: ZhWord[]): Promise<void> {
+  if (words.length === 0) return
+  const db = await openDB()
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(STORE_WORD, "readwrite")
+    const store = tx.objectStore(STORE_WORD)
+
+    words.forEach(({ zh, code, schema }) => {
+      store.delete([zh, code, schema])
+    })
+
+    tx.oncomplete = () => {
+      const msg: SyncMessage<ZhCode> = {
+        type: "deleted",
+        items: words,
+      }
+      syncChannel.postMessage(msg)
+      resolve()
+    }
+
+    tx.onerror = () => reject(tx.error)
+  })
+}
+
 export async function putWordsIDB(words: ZhWord[]): Promise<void> {
   if (words.length === 0) return
   const db = await openDB()
@@ -309,6 +334,24 @@ export async function getHans(hans: string): Promise<Hanzi[]> {
   return Promise.all(promises)
 }
 
+// export async function getByZh(zh: string): {codes: ZhCode[] words: ZhWord[] } {
+//   const db = await openDB()
+//   const res : {
+//     codes: ZhCode[],
+//     words: ZhWord[]
+//   } = {
+//     codes: [],
+//     words: []
+//   }
+
+//   const tx = db.transaction(STORE_CODE, "readonly")
+//   const store = tx.objectStore(STORE_CODE)
+//   const index = store.index("zh")
+//   const r = index.getAll(zh)
+//   r.onsuccess = () => { res.codes = r.result }
+//   r.onerror = () =>
+// }
+
 export async function zaoci(schema: Schema, zh: string) {
   const hans = await getHans(zh)
 
@@ -325,6 +368,8 @@ export async function zaoci(schema: Schema, zh: string) {
 
     if (hs.length === 0) {
       console.log("hs.length 0")
+    } else if (hs.length === 1) {
+      w.code = hs[0].cqkmInitial + hs[0].cqkmForm
     } else if (hs.length === 2) {
       w.code = [
         hs.map(h => h.cqkmInitial + h.cqkmForm[0]),
@@ -445,6 +490,7 @@ interface ImeState {
   schema: Schema
   buffer: string
   inputHistory: (string | Cand)[]
+  schemaHistory: Schema[]
   target: null | HTMLInputElement | HTMLTextAreaElement
 }
 
@@ -461,6 +507,7 @@ const state: ImeState = {
   selectedIndex: 0,
   startPos: 0,
   target: null,
+  schemaHistory: [],
 }
 
 type InputElement = HTMLInputElement | HTMLTextAreaElement
@@ -575,10 +622,89 @@ export const launchIME = async () => {
   state.cache.codes.sort((a, b) => a.code.localeCompare(b.code))
   console.log("initial IME state", state)
 
+  const keyManager = new KeyManager(30)
+
+  const zaociPrompt = async (n: number) => {
+    const t = prompt(
+      "追加したい単語またはその最後のn入力分のn",
+      lastNInputText(n),
+    )
+
+    if (!t) return
+    const i = parseInt(t)
+    if (Number.isNaN(i)) {
+      const z = await zaoci(state.schema, t)
+      const code = prompt(`「${t}」の綴`, z?.code)
+      if (z && code) {
+        z.code = code
+        putWordsIDB([z])
+      }
+    } else {
+      zaociPrompt(i)
+    }
+  }
+
+  window.addEventListener(
+    "keyup",
+    e => {
+      keyManager.onkeyup(e)
+
+      if (!state.active || !isInput()) return
+
+      if (state.schema === "hiragana") {
+        const k = kana(keyManager.chord)
+        if (k) {
+          e.preventDefault()
+          e.stopImmediatePropagation()
+          setText(k, state.startPos, state.endPos, "end")
+          return
+        }
+
+        return
+      }
+
+      if (state.schema === "katakana") {
+        const k = katakana(keyManager.chord)
+        if (k) {
+          e.preventDefault()
+          e.stopImmediatePropagation()
+          setText(k, state.startPos, state.endPos, "end")
+          return
+        }
+        return
+      }
+
+      if (keyManager.isModifierLRPressed.ShiftLeft) {
+        if (state.candidates.length > 0) {
+          const select = state.candidates[state.selectedIndex]
+          if (select.v.type === "zhcode") {
+            showToast("単漢字は編集できません")
+            return
+          }
+          const code = prompt("修正綴", select.code)
+          if (!code) return
+          const word = select.v.v
+          deleteWordsIDB([word])
+          putWordsIDB([{ ...word, code }])
+        } else if (state.buffer.length === 0) {
+          zaociPrompt(2)
+        }
+      }
+    },
+    true,
+  ) // capture phase じゃないと stopPropagation で潰されて届かない
+
   window.addEventListener(
     "keydown",
     e => {
-      const target = e.target as HTMLTextAreaElement | HTMLInputElement
+      keyManager.onkeydown(e)
+      console.log(
+        [...keyManager.chords, keyManager.chord].slice(
+          Math.max(0, keyManager.chords.length - 10),
+        ),
+      )
+      const target = e.target as InputElement
+
       if (!state.active) {
         if (isInput() && e.ctrlKey && e.key === "j") {
           e.preventDefault()
@@ -591,6 +717,56 @@ export const launchIME = async () => {
 
       if (!state.active || !isInput()) return
       state.target = target
+      state.startPos = target.selectionStart ?? 0
+      state.endPos = target.selectionEnd ?? 0
+
+      if (state.schema === "hiragana") {
+        if (!e.shiftKey && e.key === " ") {
+          e.preventDefault()
+          e.stopImmediatePropagation()
+          const schema = lastZhSchema()
+          if (schema) {
+            state.schemaHistory.push(state.schema)
+            state.schema = schema
+            showToast(`schema ${state.schema}`)
+          }
+          return
+        }
+
+        // const k = kana(keyManager.chord)
+        // if (k) {
+        //   e.preventDefault()
+        //   e.stopImmediatePropagation()
+        //   setText(k, state.startPos, state.endPos, "end")
+        //   return
+        // }
+
+        return
+      }
+
+      if (state.schema === "katakana") {
+        // const includeAlpha = keyManager.chord.some(k => /[a-z]/.test(k))
+        // const k = katakana(keyManager.chord)
+        // if (k) {
+        //   e.preventDefault()
+        //   e.stopImmediatePropagation()
+        //   setText(k, state.startPos, state.endPos, "end")
+        //   return
+        // }
+
+        if (e.shiftKey && e.key === " ") {
+          return
+        }
+
+        if (e.key === " ") {
+          e.preventDefault()
+          e.stopImmediatePropagation()
+          state.schemaHistory.push(state.schema)
+          state.schema = "hiragana"
+          showToast(`schema ${state.schema}`)
+        }
+        return
+      }
 
       if (e.ctrlKey && e.key === "j") {
         e.preventDefault()
@@ -600,7 +776,49 @@ export const launchIME = async () => {
         return
       }
 
+      if (e.shiftKey && e.key === " ") {
+        if (state.candidates.length > 0) {
+          e.preventDefault()
+          e.stopImmediatePropagation()
+          const select = state.candidates[state.selectedIndex]
+          if (select.v.type === "zhcode") {
+            showToast("単漢字は編集できません")
+            return
+          }
+          const code = prompt("修正綴", select.code)
+          if (!code) return
+          const word = select.v.v
+          deleteWordsIDB([word])
+          putWordsIDB([{ ...word, code }])
+        } else if (state.buffer.length === 0) {
+          e.preventDefault()
+          e.stopImmediatePropagation()
+          zaociPrompt(2)
+        }
+        return
+      }
+
+      if (e.ctrlKey && (e.key === " " || e.key === "i")) {
+        e.preventDefault()
+        e.stopImmediatePropagation()
+        state.schema = "hiragana"
+      }
+
+      if (e.shiftKey || e.altKey || e.ctrlKey || e.metaKey) return
+      // 以下は全て単打
+
       if (e.key === " ") {
+        if (state.candidates.length > 0) {
+          e.preventDefault()
+          e.stopImmediatePropagation()
+          commit()
+        }
+        state.schemaHistory.push(state.schema)
+        state.schema = "hiragana"
+        return
+      }
+
+      if (e.key === "Enter") {
         if (state.candidates.length > 0) {
           e.preventDefault()
           e.stopImmediatePropagation()
@@ -608,17 +826,13 @@ export const launchIME = async () => {
         }
         return
       }
-
       if (e.key === "Backspace") {
         if (state.buffer.length > 0) {
           e.preventDefault()
           e.stopImmediatePropagation()
           state.buffer = state.buffer.slice(0, -1)
           if (state.buffer.length === 0) setState.resetBuffer()
-          else {
-            state.selectedIndex = 0
-            updateCandidateRender()
-          }
+          else updateCandidateRender()
         } else if (isAfterIMEInput(target)) {
           e.preventDefault()
           e.stopImmediatePropagation()
@@ -650,10 +864,6 @@ export const launchIME = async () => {
       if (/[a-z]/.test(e.key)) {
         e.preventDefault()
         e.stopImmediatePropagation()
-        state.active = true
-        state.target = target
-        state.startPos = target.selectionStart ?? 0
-        state.endPos = target.selectionEnd ?? 0
         state.buffer += e.key
         updateCandidateRender()
         return
@@ -709,6 +919,13 @@ const setState = {
   },
 }
 
+const lastNInputText = (n: number) => {
+  return state.inputHistory
+    .slice(state.inputHistory.length - n)
+    .map(s => (typeof s === "string" ? s : s.text))
+    .join("")
+}
+
 const lastInputText = () => {
   const last = state.inputHistory[state.inputHistory.length - 1]
   if (!last) return undefined
@@ -732,28 +949,22 @@ function setText(
   state.target.dispatchEvent(new Event("input", { bubbles: true }))
 }
 
-function getInlineImeContext(inputEl: HTMLTextAreaElement | HTMLInputElement) {
-  const start = inputEl.selectionStart ?? 0
-  const end = inputEl.selectionEnd ?? 0
-  return {
-    start,
-    end,
-  }
-}
+const lastZhSchema = () =>
+  state.schemaHistory.findLast(s => s !== "hiragana" && s !== "katakana")
 
 async function updateCandidateRender() {
-  const exact = state.cache.codes.filter(
-    z => z.schema === state.schema && z.code === state.buffer,
-  )
-  const prefixed = state.cache.codes
-    .filter(z => z.schema === state.schema && z.code.startsWith(state.buffer))
-    .slice(exact.length)
-
-  // const [matchz, nextz] = await getZhCode(
-  //   STORE_CODE,
-  //   state.schema,
-  //   state.buffer,
+  // const exact = state.cache.codes.filter(
+  //   z => z.schema === state.schema && z.code === state.buffer,
   // )
+  // const prefixed = state.cache.codes
+  //   .filter(z => z.schema === state.schema && z.code.startsWith(state.buffer))
+  //   .slice(exact.length)
+
+  const [matchz, nextz] = await getZhCode(
+    STORE_CODE,
+    state.schema,
+    state.buffer,
+  )
 
   const [matchw, nextw] = await getZhWord(state.schema, state.buffer)
 
@@ -766,9 +977,9 @@ async function updateCandidateRender() {
   //   : a.code.length - b.code.length)
 
   state.candidates = [
-    ...exact.map(fromZhCode),
+    ...matchz.map(fromZhCode),
     ...matchw.map(fromZhWord),
-    ...prefixed.map(fromZhCode),
+    ...nextz.map(fromZhCode),
     ...nextw.map(fromZhWord),
   ]
 

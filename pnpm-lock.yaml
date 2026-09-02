@@ -14,7 +14,7 @@ importers:
       iso-639-1:
         specifier: ^3.1.6
         version: 3.1.6
-      opencc-js:
+      opencc:
         specifier: ^1.4.2
         version: 1.4.2
       pinyin:
@@ -195,6 +195,31 @@ packages:
     cpu: [x64]
     os: [win32]
 
+  '@opencc/opencc-darwin-arm64@1.4.2':
+    resolution: {integrity: sha512-H1MQiCTdXwdL0KIN4IS2tnuIFUsrY9f9Y99jqwfquPehGNk7agdDdIVSbiJMxBFFAI7m8l2gYutWk4n8QOx6wA==}
+    cpu: [arm64]
+    os: [darwin]
+
+  '@opencc/opencc-darwin-x64@1.4.2':
+    resolution: {integrity: sha512-+VYjd2cUoTh/Ye4JsHV2Lq+G1jDl3zfJc+Juev0s3/RJb1xXuxBXJ1NXWtLVOPpJ3rqJxbSn8qLCiSryX4gzZg==}
+    cpu: [x64]
+    os: [darwin]
+
+  '@opencc/opencc-linux-arm64@1.4.2':
+    resolution: {integrity: sha512-4BkuY+BLbD/EGH4dgMrFJma+RgS1SgHG6drIcbxSJtq2LzXG1IYoelltOy7IRCPyUgCY/ZzNW2PWyDrXsIwM+Q==}
+    cpu: [arm64]
+    os: [linux]
+
+  '@opencc/opencc-linux-x64@1.4.2':
+    resolution: {integrity: sha512-Mg/y2odg+3Lp78wdH8/se+YAvEmdbICb/rLisU9eDGweB0baPjaEwlSpoiRgBy3uIRRsTaiNOzvJurW1EMTlPw==}
+    cpu: [x64]
+    os: [linux]
+
+  '@opencc/opencc-win32-x64@1.4.2':
+    resolution: {integrity: sha512-oLOAfSEm87TRLQr8fXHoK0OXYHvyr3E7DkIIBRfS4FqOWlim04ZI66saMZSuTyUtvD8c93ICVKvMR1E5MblmWA==}
+    cpu: [x64]
+    os: [win32]
+
   '@types/node@26.1.0':
     resolution: {integrity: sha512-O0A1G3xPGy4w7AgQdAQYUlQ+BKk2Oovw8eRpofyp5KdBZULnbe+WqaOVNrm705SHphCiG4XHsACrSmPu1f+Kgw==}
 
@@ -232,8 +257,10 @@ packages:
   minimist@1.2.8:
     resolution: {integrity: sha512-2yyAR8qBkN3YuheJanUpWC5U3bb5osDywNB8RzDVlDwDHbocAJveqqj1u8+SVD7jkWT4yvsHCpWqqWqAxb0zCA==}
 
-  opencc-js@1.4.2:
-    resolution: {integrity: sha512-EdcspgdROiCCZDM+jZR6Pa670xW+EW2QhctPBQ8gRjg6lrx4IHEl+2s+kt5izk/TkxVRgdWuFgaGkaEdIUfdaw==}
+  opencc@1.4.2:
+    resolution: {integrity: sha512-fAo8GJy0XhFyw9zIsEHmEVKL+qK8qbw0hcCjqKN5cn2UA7FPOU6b13xpqpSUf8mLNLhBMmIVZu6J+fEjJ2KcyQ==}
+    engines: {node: '>=20.17'}
+    hasBin: true
 
   pinyin@4.0.0:
     resolution: {integrity: sha512-vHpV5K+vpp6XUUpZNGRDuHoN+1xcmieM3EWlH4QjSX2kkpG/gVOwpqwV9EOJ9x9c9UERFKeLml5XVSukE/PLgQ==}
@@ -347,6 +374,21 @@ snapshots:
   '@esbuild/win32-x64@0.28.1':
     optional: true
 
+  '@opencc/opencc-darwin-arm64@1.4.2':
+    optional: true
+
+  '@opencc/opencc-darwin-x64@1.4.2':
+    optional: true
+
+  '@opencc/opencc-linux-arm64@1.4.2':
+    optional: true
+
+  '@opencc/opencc-linux-x64@1.4.2':
+    optional: true
+
+  '@opencc/opencc-win32-x64@1.4.2':
+    optional: true
+
   '@types/node@26.1.0':
     dependencies:
       undici-types: 8.3.0
@@ -400,7 +442,13 @@ snapshots:
 
   minimist@1.2.8: {}
 
-  opencc-js@1.4.2: {}
+  opencc@1.4.2:
+    optionalDependencies:
+      '@opencc/opencc-darwin-arm64': 1.4.2
+      '@opencc/opencc-darwin-x64': 1.4.2
+      '@opencc/opencc-linux-arm64': 1.4.2
+      '@opencc/opencc-linux-x64': 1.4.2
+      '@opencc/opencc-win32-x64': 1.4.2
 
   pinyin@4.0.0:
     dependencies:
