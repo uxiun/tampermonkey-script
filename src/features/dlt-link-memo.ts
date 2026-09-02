@@ -652,7 +652,7 @@ export function renderWidget(state: AppState) {
   widget.style.cssText = `
     position: fixed; bottom: 0px;
     right: ${widgetRight}px;
-    z-index: 20000000;
+    z-index: 2000;
     width: ${widgetWidth}px;
     <!-- height: min(500px, 70vh); -->
     background: #181825; color: #cdd6f4;
@@ -672,7 +672,7 @@ export function renderWidget(state: AppState) {
       right: 16px;
       bottom: min(508px, calc(50vh + 8px)); /* 小窓のすぐ上 */ -->
       width: ${widgetWidth}px;
-      z-index: 20000001;
+      z-index: 2001;
       display: flex;
       flex-wrap: wrap-reverse; /* 下から上へ折れ曲がって積み上がる */
       /* justify-content: flex-end; 右揃え（小窓の右端に整列） */
@@ -743,46 +743,37 @@ export function renderWidget(state: AppState) {
     pageIndicator.innerText = `${state.currentPage + 1}/${maxPage}`
   }
 
-  const renderLinkItem = (link: PostLink, isSelected: boolean) => {
-    // 1. 前景（親）のタイトルを最大2〜3件抽出（IDからタイトルを逆引き）
-    const fgTitles = (link.fg || [])
-      .map(fgId => idToLinkMap.get(fgId)?.title || "")
-      .filter(s => s.length > 0)
-      .slice(0, 10)
+  // const renderLinkItem = (link: PostLink, isSelected: boolean) => {
+  //   // 1. 前景（親）のタイトルを最大2〜3件抽出（IDからタイトルを逆引き）
+  //   const fgTitles = (link.fg || [])
+  //     .map(fgId => idToLinkMap.get(fgId)?.title || "")
+  //     .filter(s => s.length > 0)
+  //     .slice(0, 10)
 
-    const fgBadgeHtml =
-      fgTitles.length > 0
-        ? `<div style="font-size: 14px; color: #89b4fa; opacity: 0.85; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-bottom: 2px;">
-            ${fgTitles.join("｜")}
-           </div>`
-        : ""
+  //   const fgBadgeHtml =
+  //     fgTitles.length > 0
+  //       ? `<div style="font-size: 14px; color: #89b4fa; opacity: 0.85; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-bottom: 2px;">
+  //           ${fgTitles.join("｜")}
+  //          </div>`
+  //       : ""
 
-    return `
-      <div class="dlt-list-item" style="padding: 5px 8px; border-radius: 5px; margin-bottom: 4px;
-                  background: ${isSelected ? "#313244" : "rgba(255,255,255,0.02)"};
-                  border: 1px solid ${isSelected ? "#89b4fa" : "transparent"};
-                  transition: background 0.1s ease;">
-        ${fgBadgeHtml}
+  //   return `
+  //     <div class="dlt-list-item" style="padding: 5px 8px; border-radius: 5px; margin-bottom: 4px;
+  //                 background: ${isSelected ? "#313244" : "rgba(255,255,255,0.02)"};
+  //                 border: 1px solid ${isSelected ? "#89b4fa" : "transparent"};
+  //                 transition: background 0.1s ease;">
+  //       ${fgBadgeHtml}
 
-        <div style="font-size: 16px; font-weight: ${isSelected ? "bold" : "normal"};
-                    color: ${isSelected ? "#89b4fa" : "#cdd6f4"};
-                    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
-                    display: flex; align-items: center; justify-content: space-between; gap: 12px">
-          <span>${link.title}
-            ${link.use ? `<span style="font-size: 9px; opacity: 0.6; background: #11111b; padding: 1px 4px; border-radius: 3px; color: #f9e2af;">★${link.use}</span>` : ""}
-          </span>
-          <span style="font-size: 10px; font-family: monospace; opacity: .5">${linkIdText(link)}</span>
-        </div>
-      </div>
-    `
-  }
-
-  // // DOCKペイン描画 ...
-  // const dockPane = document.getElementById("dlt-dock-pane")
-  // if (dockPane) {
-  //   dockPane.innerHTML = `
-  //     <div style="font-size: 10px; color: #f38ba8; font-weight: bold; margin-bottom: 6px;">[ DOCK ]</div>
-  //     ${state.leftDock.map(link => `<div style="font-size: 11px; margin-bottom: 4px; color: #a6e3a1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">⚓ ${postLinkText(link)}</div>`).join("")}
+  //       <div style="font-size: 16px; font-weight: ${isSelected ? "bold" : "normal"};
+  //                   color: ${isSelected ? "#89b4fa" : "#cdd6f4"};
+  //                   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  //                   display: flex; align-items: center; justify-content: space-between; gap: 12px">
+  //         <span>${link.title}
+  //           ${link.use ? `<span style="font-size: 9px; opacity: 0.6; background: #11111b; padding: 1px 4px; border-radius: 3px; color: #f9e2af;">★${link.use}</span>` : ""}
+  //         </span>
+  //         <span style="font-size: 10px; font-family: monospace; opacity: .5">${linkIdText(link)}</span>
+  //       </div>
+  //     </div>
   //   `
   // }
 
@@ -796,22 +787,6 @@ export function renderWidget(state: AppState) {
         }),
       )
       .join("")
-
-    // const rightItems = getPagedItems(state)
-    // listPane.innerHTML = `
-    //   <div style="font-size: 10px; color: #f9e2af; font-weight: bold; margin-bottom: 6px;">
-    //     ${state.isSearching ? "[ SEARCH RESULTS ]" : "[ HISTORY ]"}
-    //   </div>
-    //   ${rightItems.map((link, idx) => renderLinkItem(link, idx === state.cursorIndex)).join("")}
-    // `
-
-    // 💡【コア】選択中の項目へ自動スクロール追従させて見切れを解消！
-    // const selectedEl = listPane.querySelectorAll(".dlt-list-item")[
-    //   state.cursorIndex
-    // ] as HTMLElement
-    // if (selectedEl) {
-    //   selectedEl.scrollIntoView({ block: "nearest" })
-    // }
   }
 }
 

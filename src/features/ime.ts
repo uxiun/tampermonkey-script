@@ -3,7 +3,7 @@ import { candidateTip } from "./dlt-component"
 import { getPopupPosition } from "@/pure/dom"
 import { Key, KeyManager, Single } from "@/pure/key"
 import { showToast } from "@/pure/component"
-import { kana, katakana } from "@/pure/table"
+import { kana, KANA_TABLE, katakana } from "@/pure/table"
 
 const DB_NAME = "ac_ime_db"
 const DB_VERSION = 2
@@ -25,6 +25,9 @@ export interface Hanzi {
   cj5: string[]
   cqkmForm: string | null
   cqkmInitials?: string[]
+  on: boolean
+  date: Date
+  user: boolean
 }
 
 export interface Cqkm {
@@ -51,6 +54,9 @@ export interface ZhCode {
   code: string
   schema: Schema
   nth: number
+  on: boolean
+  date: Date // 追加変更日時
+  user: boolean
 }
 
 export interface ZhWord {
@@ -59,17 +65,12 @@ export interface ZhWord {
   schema: Schema
   nth: number
   hans: Cqkm[]
+  on: boolean
+  date: Date
+  user: boolean // user added or not
 }
 
 type Schema = "cj5" | "cqkm" | "cqkm-xy" | "hiragana" | "katakana"
-
-const HANZI_DEFAULT: Hanzi = {
-  zh: "",
-  pinyins: [],
-  cj5: [],
-  cqkmForm: null,
-  cqkmInitials: [],
-}
 
 type SyncMessage<T> = { type: "updated" | "deleted"; items: T[] }
 
@@ -95,6 +96,9 @@ export function openDB(): Promise<IDBDatabase> {
           multiEntry: true,
         })
         store.createIndex("cqkmForm", "cqkmForm", { unique: false })
+        store.createIndex("on", "on")
+        store.createIndex("date", "date")
+        store.createIndex("user", "user")
       }
 
       if (!db.objectStoreNames.contains(STORE_CODE)) {
@@ -104,9 +108,14 @@ export function openDB(): Promise<IDBDatabase> {
         store.createIndex("code", "code")
         store.createIndex("schema", "schema")
         store.createIndex("nth", "nth")
-        store.createIndex("code-schema", ["code", "schema"], { unique: false })
+        store.createIndex("on", "on")
+        store.createIndex("date", "date")
+        store.createIndex("user", "user")
+        store.createIndex("codeNth", ["code", "nth"])
+        store.createIndex("schemaCodeNth", ["schema", "code", "nth"])
         store.createIndex("zh", "zh", { unique: false })
       }
+
       if (!db.objectStoreNames.contains(STORE_WORD)) {
         const store = db.createObjectStore(STORE_WORD, {
           keyPath: ["zh", "code", "schema"],
@@ -114,7 +123,10 @@ export function openDB(): Promise<IDBDatabase> {
         store.createIndex("code", "code")
         store.createIndex("schema", "schema")
         store.createIndex("nth", "nth")
-        store.createIndex("code-schema", ["code", "schema"], { unique: false })
+        store.createIndex("on", "on")
+        store.createIndex("date", "date")
+        store.createIndex("codeNth", ["code", "nth"])
+        store.createIndex("schemaCodeNth", ["schema", "code", "nth"])
         store.createIndex("zh", "zh", { unique: false })
       }
     }
@@ -142,71 +154,103 @@ async function getAllFromIDB<T>(storeName: string): Promise<T[]> {
   })
 }
 
+// export async function getZhCode(
+//   storeName: string,
+//   schema: Schema,
+//   searchPrefix: string,
+// ): Promise<[ZhCode[], ZhCode[]]> {
+//   const db = await openDB()
+//   const range = IDBKeyRange.bound(
+//     searchPrefix,
+//     searchPrefix + "\uffff",
+//     true,
+//     false,
+//   )
+
+//   return new Promise((resolve, reject) => {
+//     const tx = db.transaction(storeName, "readonly")
+//     const store = tx.objectStore(storeName)
+
+//     const index = store.index("code")
+//     const eq = index.getAll(searchPrefix)
+//     eq.onsuccess = () => {
+//       const eqs: ZhCode[] = eq.result
+//       const req = index.getAll(range)
+//       req.onsuccess = () => {
+//         const codes: ZhCode[] = req.result
+//         resolve(
+//           [eqs, codes].map(zs => zs.filter(z => z.schema === schema)) as [
+//             ZhCode[],
+//             ZhCode[],
+//           ],
+//         )
+//       }
+//       req.onerror = () => reject(req.error)
+//     }
+//   })
+// }
+
 export async function getZhCode(
-  storeName: string,
   schema: Schema,
   searchPrefix: string,
 ): Promise<[ZhCode[], ZhCode[]]> {
   const db = await openDB()
-  const range = IDBKeyRange.bound(
-    searchPrefix,
-    searchPrefix + "\uffff",
-    true,
-    false,
-  )
 
   return new Promise((resolve, reject) => {
-    const tx = db.transaction(storeName, "readonly")
-    const store = tx.objectStore(storeName)
+    const tx = db.transaction(STORE_CODE, "readonly")
+    const store = tx.objectStore(STORE_CODE)
 
-    const index = store.index("code")
-    const eq = index.getAll(searchPrefix)
+    const index = store.index("schemaCodeNth")
+    const eq = index.getAll(
+      IDBKeyRange.bound(
+        [schema, searchPrefix, -Infinity],
+        [schema, searchPrefix, Infinity],
+      ),
+    )
     eq.onsuccess = () => {
       const eqs: ZhCode[] = eq.result
-      const req = index.getAll(range)
+      const req = index.getAll(
+        IDBKeyRange.bound(
+          [schema, searchPrefix, Infinity],
+          [schema, searchPrefix + "\uffff", Infinity],
+        ),
+      )
       req.onsuccess = () => {
         const codes: ZhCode[] = req.result
-        resolve(
-          [eqs, codes].map(zs => zs.filter(z => z.schema === schema)) as [
-            ZhCode[],
-            ZhCode[],
-          ],
-        )
+        resolve([eqs, codes] as [ZhCode[], ZhCode[]])
       }
       req.onerror = () => reject(req.error)
     }
   })
 }
-
 export async function getZhWord(
   schema: Schema,
   searchPrefix: string,
 ): Promise<[ZhWord[], ZhWord[]]> {
   const db = await openDB()
-  const range = IDBKeyRange.bound(
-    searchPrefix,
-    searchPrefix + "\uffff",
-    true,
-    false,
-  )
 
   return new Promise((resolve, reject) => {
     const tx = db.transaction(STORE_WORD, "readonly")
     const store = tx.objectStore(STORE_WORD)
 
-    const index = store.index("code")
-    const eq = index.getAll(searchPrefix)
+    const index = store.index("schemaCodeNth")
+    const eq = index.getAll(
+      IDBKeyRange.bound(
+        [schema, searchPrefix, -Infinity],
+        [schema, searchPrefix, Infinity],
+      ),
+    )
     eq.onsuccess = () => {
       const eqs: ZhWord[] = eq.result
-      const req = index.getAll(range)
+      const req = index.getAll(
+        IDBKeyRange.bound(
+          [schema, searchPrefix, Infinity],
+          [schema, searchPrefix + "\uffff", Infinity],
+        ),
+      )
       req.onsuccess = () => {
         const codes: ZhWord[] = req.result
-        resolve(
-          [eqs, codes].map(zs => zs.filter(z => z.schema === schema)) as [
-            ZhWord[],
-            ZhWord[],
-          ],
-        )
+        resolve([eqs, codes] as [ZhWord[], ZhWord[]])
       }
       req.onerror = () => reject(req.error)
     }
@@ -316,7 +360,7 @@ export async function getHans(hans: string): Promise<Hanzi[]> {
 
   // 1. 各文字の取得処理を Promise に変換する
   const promises = hans.split("").map(h => {
-    return new Promise<Hanzi>((resolve, reject) => {
+    return new Promise<Hanzi | undefined>((resolve, reject) => {
       const r = store.get(h)
 
       r.onsuccess = () => {
@@ -325,13 +369,14 @@ export async function getHans(hans: string): Promise<Hanzi[]> {
       }
 
       r.onerror = () => {
-        reject(r.error)
+        console.log(r.error)
+        resolve(undefined)
       }
     })
   })
 
   // 2. すべての Promise が完了するのを待って結果を返す
-  return Promise.all(promises)
+  return Promise.all(promises).then(hs => hs.filter(h => h !== undefined))
 }
 
 // export async function getByZh(zh: string): {codes: ZhCode[] words: ZhWord[] } {
@@ -364,6 +409,9 @@ export async function zaoci(schema: Schema, zh: string) {
       nth: 0,
       schema,
       zh,
+      date: new Date(),
+      on: true,
+      user: true,
     }
 
     if (hs.length === 0) {
@@ -436,9 +484,10 @@ const fromZhWord = (z: ZhWord): Cand => ({
 })
 
 interface ImeConfig {
-  keys: KeyConfig
-  schema: Record<Schema, SchemaConfig>
-  layout?: Record<Schema, CodeMapToBase>
+  // keys: KeyConfig
+  // schema: Record<Schema, SchemaConfig>
+
+  cqkmFormLayout?: CodeMapToBase
 }
 
 type CodeMapToBase = Map<string, string> // 受け取った入力 > 元のcodeに変換
@@ -464,18 +513,7 @@ interface SchemaConfig {
 }
 
 // let config: ImeConfig = {
-//   keys: {
-//     commitNthKeys: [" "],
-//     selectUpDownKeys: ["ArrowUp", "ArrowDown"],
-//     toggleActive: {
-//       key: "j",
-//       modifiers: ["CtrlLeft"]
-//     }
-//   },
-
-//   schema: {
-//     cqkm:
-//   }
+//   cqkmFormLayout: [],
 // }
 
 interface ImeState {
@@ -492,6 +530,7 @@ interface ImeState {
   inputHistory: (string | Cand)[]
   schemaHistory: Schema[]
   target: null | HTMLInputElement | HTMLTextAreaElement
+  selectedIndexMax: number
 }
 
 const state: ImeState = {
@@ -508,7 +547,10 @@ const state: ImeState = {
   startPos: 0,
   target: null,
   schemaHistory: [],
+  selectedIndexMax: 20,
 }
+
+export const isImeCandidateVisible = () => state.candidates.length > 0
 
 type InputElement = HTMLInputElement | HTMLTextAreaElement
 
@@ -520,7 +562,7 @@ class InlineSuggestPopup {
     this.el.id = "ac-inline-ime-popup"
     Object.assign(this.el.style, {
       position: "fixed",
-      zIndex: "3000000000",
+      zIndex: "300000",
       background: "transparent",
       border: "none",
       boxShadow: "none",
@@ -535,13 +577,19 @@ class InlineSuggestPopup {
   }
 
   show(
-    coords: { top: number; left: number },
+    coords: { top: number; left: number; lineHeight: number },
     selectedIndex: number,
     // _optionNumbers: number,
   ) {
+    console.log("coords", coords)
     if (state.candidates.length === 0) {
       this.hide()
       return
+    }
+
+    // 重ね順で最手前に維持するため、表示のたびに body の最末尾に移動
+    if (this.el.parentElement === document.body) {
+      document.body.appendChild(this.el)
     }
 
     // 画面全体の有効な横幅を取得（スクロールバーを含まない幅）
@@ -551,6 +599,15 @@ class InlineSuggestPopup {
     }
     const maxWidth = client.width - coords.left - 16
     const maxHeight = client.height - coords.top - 16
+
+    // 入力欄の1行分の高さ（取得できない場合はデフォルト20px）
+    const lineHeight = coords.lineHeight ?? 20
+    // 画面下部の残領域と上部の残領域を計算
+    const spaceBelow = client.height - (coords.top + lineHeight) - 16
+    const spaceAbove = coords.top - 16
+
+    // 💡 下の領域が狭く(180px未満)、かつ上の方が広い場合は「上表示モード」に切替
+    const showAbove = spaceBelow < 180 && spaceAbove > spaceBelow
 
     Object.assign(
       this.el.style,
@@ -565,15 +622,48 @@ class InlineSuggestPopup {
           },
     )
 
-    // 💡 Flex-wrap で横向きレンガ状に敷き詰める設定
-    Object.assign(this.el.style, {
-      top: `${coords.top}px`,
-      display: "flex",
-      flexWrap: "wrap",
-      gap: "6px",
-      maxHeight: `${maxHeight}px`,
-      alignItems: "flex-end",
-    })
+    // // 💡 Flex-wrap で横向きレンガ状に敷き詰める設定
+    // Object.assign(this.el.style, {
+    //   top: `${coords.top}px`,
+    //   display: "flex",
+    //   flexWrap: "wrap",
+    //   gap: "6px",
+    //   maxHeight: `${maxHeight}px`,
+    //   alignItems: "flex-end",
+    // })
+
+    if (showAbove) {
+      // ----------------------------------------------------
+      // 【パターンA：上向き表示】（Link Memo等の最下部入力欄）
+      // ----------------------------------------------------
+      Object.assign(this.el.style, {
+        top: "auto",
+
+        bottom: `${client.height - coords.top + coords.lineHeight}px`, // キャレットの直上
+        display: "flex",
+        // flexDirection: "row-reverse", // 💡 横並び折り返し時、下から上へ積むための反転
+        flexWrap: "wrap-reverse", // 💡 下から上に向かって行が積み上がる
+        justifyContent: "flex-start",
+        alignItems: "flex-start",
+        gap: "6px",
+        maxHeight: `${Math.max(100, spaceAbove)}px`,
+      })
+    } else {
+      // ----------------------------------------------------
+      // 【パターンB：下向き表示】（通常の入力欄）
+      // ----------------------------------------------------
+      Object.assign(this.el.style, {
+        top: `${coords.top}px`,
+        // bottom: "auto",
+        display: "flex",
+        // flexDirection: "row",
+        flexWrap: "wrap",
+        // justifyContent: "flex-start",
+        gap: "6px",
+        maxHeight: `${Math.max(20, spaceBelow)}px`,
+        alignItems: "flex-end",
+      })
+    }
 
     this.el.innerHTML = [
       candidateTip(
@@ -587,15 +677,24 @@ class InlineSuggestPopup {
               nth: 0,
               schema: state.schema,
               zh: "",
+              date: new Date(),
+              on: true,
+              user: true,
             },
           },
         },
         "",
         true,
       ),
-      ...state.candidates.slice(0, 10).map((cand, idx) => {
+      ...state.candidates.slice(0, state.selectedIndexMax).map((cand, idx) => {
         const isSelected = idx === selectedIndex
-        return candidateTip(cand, state.buffer, isSelected)
+        return candidateTip(cand, state.buffer, isSelected, {
+          fontSize: {
+            code: "15px",
+            fg: "15px",
+            text: "19px",
+          },
+        })
       }),
     ].join("")
 
@@ -608,6 +707,7 @@ class InlineSuggestPopup {
 
   hide() {
     this.el.style.display = "none"
+    // document.body.removeChild(this.el)
   }
 }
 
@@ -622,7 +722,43 @@ export const launchIME = async () => {
   state.cache.codes.sort((a, b) => a.code.localeCompare(b.code))
   console.log("initial IME state", state)
 
-  const keyManager = new KeyManager(30)
+  const keyManager = new KeyManager(40, committedChord => {
+    if (!state.active || !state.target) return
+
+    if (state.schema === "hiragana") {
+      const k = kana(committedChord)
+      if (k) {
+        setText(k, state.startPos, state.endPos, "end")
+        return
+      }
+      if (
+        committedChord.length === 1 &&
+        KANA_TABLE.map(row => row[0])
+          .join("")
+          .includes(committedChord[0])
+      ) {
+        setText(committedChord[0], state.startPos, state.endPos, "end")
+      }
+      return
+    }
+
+    if (state.schema === "katakana") {
+      const k = katakana(committedChord)
+      if (k) {
+        setText(k, state.startPos, state.endPos, "end")
+        return
+      }
+      if (
+        committedChord.length === 1 &&
+        KANA_TABLE.map(row => row[0])
+          .join("")
+          .includes(committedChord[0])
+      ) {
+        setText(committedChord[0], state.startPos, state.endPos, "end")
+      }
+      return
+    }
+  })
 
   const zaociPrompt = async (n: number) => {
     const t = prompt(
@@ -651,28 +787,28 @@ export const launchIME = async () => {
 
       if (!state.active || !isInput()) return
 
-      if (state.schema === "hiragana") {
-        const k = kana(keyManager.chord)
-        if (k) {
-          e.preventDefault()
-          e.stopImmediatePropagation()
-          setText(k, state.startPos, state.endPos, "end")
-          return
-        }
+      // if (state.schema === "hiragana") {
+      //   const k = kana(keyManager.chord)
+      //   if (k) {
+      //     e.preventDefault()
+      //     e.stopImmediatePropagation()
+      //     setText(k, state.startPos, state.endPos, "end")
+      //     return
+      //   }
 
-        return
-      }
+      //   return
+      // }
 
-      if (state.schema === "katakana") {
-        const k = katakana(keyManager.chord)
-        if (k) {
-          e.preventDefault()
-          e.stopImmediatePropagation()
-          setText(k, state.startPos, state.endPos, "end")
-          return
-        }
-        return
-      }
+      // if (state.schema === "katakana") {
+      //   const k = katakana(keyManager.chord)
+      //   if (k) {
+      //     e.preventDefault()
+      //     e.stopImmediatePropagation()
+      //     setText(k, state.startPos, state.endPos, "end")
+      //     return
+      //   }
+      //   return
+      // }
 
       if (keyManager.isModifierLRPressed.ShiftLeft) {
         if (state.candidates.length > 0) {
@@ -698,11 +834,7 @@ export const launchIME = async () => {
     "keydown",
     e => {
       keyManager.onkeydown(e)
-      console.log(
-        [...keyManager.chords, keyManager.chord].slice(
-          Math.max(0, keyManager.chords.length - 10),
-        ),
-      )
+
       const target = e.target as InputElement
 
       if (!state.active) {
@@ -720,40 +852,44 @@ export const launchIME = async () => {
       state.startPos = target.selectionStart ?? 0
       state.endPos = target.selectionEnd ?? 0
 
+      if (e.ctrlKey && e.key === "j") {
+        e.preventDefault()
+        e.stopImmediatePropagation()
+        setState.diactivate()
+        showToast("IME OFF")
+        return
+      }
+
+      if (e.key === "ArrowLeft" || e.key === "ArrowRight") {
+        return
+      }
+
+      if (state.schema === "hiragana" || state.schema === "katakana") {
+        if (
+          KANA_TABLE.map(row => row[0])
+            .join("")
+            .includes(e.key)
+        ) {
+          e.preventDefault()
+          e.stopImmediatePropagation()
+          keyManager.onkeydownChord(e)
+        }
+      }
+
       if (state.schema === "hiragana") {
         if (!e.shiftKey && e.key === " ") {
           e.preventDefault()
           e.stopImmediatePropagation()
-          const schema = lastZhSchema()
-          if (schema) {
-            state.schemaHistory.push(state.schema)
-            state.schema = schema
-            showToast(`schema ${state.schema}`)
-          }
+          const schema = lastZhSchema() ?? "cqkm"
+          setSchema(schema)
+
           return
         }
-
-        // const k = kana(keyManager.chord)
-        // if (k) {
-        //   e.preventDefault()
-        //   e.stopImmediatePropagation()
-        //   setText(k, state.startPos, state.endPos, "end")
-        //   return
-        // }
 
         return
       }
 
       if (state.schema === "katakana") {
-        // const includeAlpha = keyManager.chord.some(k => /[a-z]/.test(k))
-        // const k = katakana(keyManager.chord)
-        // if (k) {
-        //   e.preventDefault()
-        //   e.stopImmediatePropagation()
-        //   setText(k, state.startPos, state.endPos, "end")
-        //   return
-        // }
-
         if (e.shiftKey && e.key === " ") {
           return
         }
@@ -761,18 +897,8 @@ export const launchIME = async () => {
         if (e.key === " ") {
           e.preventDefault()
           e.stopImmediatePropagation()
-          state.schemaHistory.push(state.schema)
-          state.schema = "hiragana"
-          showToast(`schema ${state.schema}`)
+          setSchema("hiragana")
         }
-        return
-      }
-
-      if (e.ctrlKey && e.key === "j") {
-        e.preventDefault()
-        e.stopImmediatePropagation()
-        setState.diactivate()
-        showToast("IME OFF")
         return
       }
 
@@ -801,7 +927,7 @@ export const launchIME = async () => {
       if (e.ctrlKey && (e.key === " " || e.key === "i")) {
         e.preventDefault()
         e.stopImmediatePropagation()
-        state.schema = "hiragana"
+        setSchema("hiragana")
       }
 
       if (e.shiftKey || e.altKey || e.ctrlKey || e.metaKey) return
@@ -812,9 +938,12 @@ export const launchIME = async () => {
           e.preventDefault()
           e.stopImmediatePropagation()
           commit()
+          setSchema("hiragana")
+        } else {
+          e.preventDefault()
+          e.stopImmediatePropagation()
+          setSchema("katakana")
         }
-        state.schemaHistory.push(state.schema)
-        state.schema = "hiragana"
         return
       }
 
@@ -847,13 +976,25 @@ export const launchIME = async () => {
         if (state.candidates.length > 0) {
           e.preventDefault()
           e.stopImmediatePropagation()
-          if (e.key === "ArrowDown") state.selectedIndex += 1
-          if (e.key === "ArrowUp") state.selectedIndex -= 1
+          if (e.key === "ArrowDown") {
+            const i = state.selectedIndex + 1
+            state.selectedIndex = i % state.selectedIndexMax
+          }
+          if (e.key === "ArrowUp") {
+            const i = state.selectedIndex - 1
+            state.selectedIndex = i % state.selectedIndexMax
+          }
           renderWidget()
         }
         return
       }
 
+      if (e.key === "Tab" && state.buffer.length > 0) {
+        e.preventDefault()
+        e.stopImmediatePropagation()
+        setState.resetBuffer()
+        return
+      }
       if (e.key === "Escape" && state.buffer.length > 0) {
         e.preventDefault()
         e.stopImmediatePropagation()
@@ -895,8 +1036,30 @@ function commit() {
     state.endPos,
     "end", // move caret to insertion end
   )
-
   state.inputHistory = [...state.inputHistory, cand]
+
+  if (state.selectedIndex > 0) {
+    const i = state.candidates.findIndex(c => c.code === cand.code)
+    const j = state.candidates.findLastIndex(c => c.code === cand.code)
+    if (i < state.selectedIndex) {
+      const cands: Cand[] = state.candidates
+        .slice(i, Math.max(state.selectedIndex, j) + 1)
+        .map((c, i) => {
+          const nth = c.text === cand.text ? 0 : i + 1
+          c.v.v.nth = nth
+          return c
+        })
+
+      for (const c of cands) {
+        if (c.v.type === "zhcode") {
+          putCodesIDB([c.v.v])
+        } else if (c.v.type === "zhword") {
+          putWordsIDB([c.v.v])
+        }
+      }
+    }
+  }
+
   setState.resetBuffer()
 }
 
@@ -947,6 +1110,26 @@ function setText(
   if (!state.target) return
   state.target.setRangeText(text, start, end, mode)
   state.target.dispatchEvent(new Event("input", { bubbles: true }))
+  state.startPos = state.target.selectionStart ?? 0
+  state.endPos = state.target.selectionEnd ?? 0
+}
+
+function setSchema(schema: Schema) {
+  state.schemaHistory.push(state.schema)
+  state.schema = schema
+  showToast(
+    `${
+      state.schema === "hiragana"
+        ? "ひらがな"
+        : state.schema === "katakana"
+          ? "カタカナ"
+          : state.schema === "cqkm"
+            ? "超强快码"
+            : state.schema === "cj5"
+              ? "倉頡五代"
+              : state.schema
+    }`,
+  )
 }
 
 const lastZhSchema = () =>
@@ -961,7 +1144,7 @@ async function updateCandidateRender() {
   //   .slice(exact.length)
 
   const [matchz, nextz] = await getZhCode(
-    STORE_CODE,
+    // STORE_CODE,
     state.schema,
     state.buffer,
   )
@@ -984,6 +1167,8 @@ async function updateCandidateRender() {
   ]
 
   state.selectedIndex = 0
-  if (state.candidates.length === 1) commit()
+  if (state.candidates.length === 0) {
+    setState.resetBuffer()
+  } else if (state.candidates.length === 1) commit()
   else renderWidget()
 }

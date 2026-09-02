@@ -13,6 +13,7 @@ import {
   setupTabSyncListener,
 } from "./dlt-db"
 import { candidateLink } from "./dlt-component"
+import { isImeCandidateVisible } from "./ime"
 
 type IMEOption = {
   suggestionNumbers: number
@@ -80,7 +81,7 @@ function runSearch(option: IMEOption, state: IMEState) {
 }
 
 function renderWidget(state: IMEState, inlinePopup: InlineSuggestPopup) {
-  if (!state.isActive || !state.target) {
+  if (!state.isActive || !state.target || isImeCandidateVisible()) {
     inlinePopup.hide()
     return
   }
@@ -215,7 +216,7 @@ export function dltIME(option = defaultIMEOption) {
   window.addEventListener(
     "keydown",
     e => {
-      if (!imeState.isActive) return
+      if (!imeState.isActive || isImeCandidateVisible()) return
 
       const target = e.target as HTMLTextAreaElement | HTMLInputElement
 

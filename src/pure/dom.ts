@@ -36,8 +36,6 @@ export function getPopupPosition(
   startPos: number,
   mirrorElementId: string,
 ) {
-  console.log({ inputEl, startPos })
-
   let mirrorEl = document.getElementById(mirrorElementId)
   if (!mirrorEl) {
     mirrorEl = document.createElement("div")
@@ -59,6 +57,7 @@ export function getPopupPosition(
       return {
         top: 0,
         left: 0,
+        lineHeight: 20,
       }
 
     const rect = inputEl.getBoundingClientRect()
@@ -87,22 +86,18 @@ export function getPopupPosition(
     marker.textContent = "{"
     mirrorEl.appendChild(marker)
 
+    const lineHeight = parseFloat(styles.lineHeight) || 20
+
     return inputEl.getAttribute("id") === "kw"
       ? {
-          top:
-            rect.top +
-            marker.offsetTop +
-            (parseFloat(styles.lineHeight) || 20) +
-            inputEl.scrollTop,
+          top: rect.top + marker.offsetTop + lineHeight + inputEl.scrollTop,
           left: rect.left + marker.offsetLeft - inputEl.scrollLeft,
+          lineHeight,
         }
       : {
-          top:
-            rect.top +
-            marker.offsetTop +
-            (parseFloat(styles.lineHeight) || 20) +
-            inputEl.scrollTop,
+          top: rect.top + marker.offsetTop + lineHeight + inputEl.scrollTop,
           left: rect.left + marker.offsetLeft - inputEl.scrollLeft,
+          lineHeight,
         }
   }
 

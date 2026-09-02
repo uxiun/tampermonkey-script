@@ -7,8 +7,6 @@ const hostObj: { [hostname: string]: () => void } = {
   "dlt.kitetu.com": runDlt,
 }
 
-launchIME()
-
 // const m = new Map(Object.entries(hostObj))
 const f = hostObj[currentHost]
 if (f) f()

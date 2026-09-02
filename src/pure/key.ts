@@ -76,22 +76,22 @@ export class KeyManager {
   private isModifierLRDown: Record<ModifierLR, boolean> = {
     ...modifierLRboolDefault,
   }
-
-  chord: Key[] = []
-  chords: Key[][] = []
-  private chordWindowMs: number
-  private lastKeyDownTime = 0
   private isModifierOnlyCandidate = false
   private maxTapIntervalMsec = 300 // 単打とみなす上限ミリ秒
-  private chordInitialKeyDownTime = 0
-  chordContinue = false
+  private lastKeyDownTime = 0
+
+  chord: Key[] = []
+  private chordWindowMs: number
+  private timer: number | null = null
+  private onCommitChord: (chord: Key[]) => void
 
   // private pressedKeys: Map<string, number> = new Map()
 
   // chords: Key[][] = []
 
-  constructor(chordWindowMs: number) {
+  constructor(chordWindowMs: number, onCommitChord: (chord: Key[]) => void) {
     this.chordWindowMs = chordWindowMs
+    this.onCommitChord = onCommitChord
   }
 
   onkeyup(e: KeyboardEvent) {
@@ -105,25 +105,51 @@ export class KeyManager {
     }
 
     this.modifierLRDown(e)
-    const now = performance.now()
-    if (this.chord.length === 0) {
-      this.chord.push(e.key as Key)
-      // this.pressedKeys.set(e.key, now)
-      this.chordInitialKeyDownTime = now
-    } else {
-      const duration = now - this.chordInitialKeyDownTime
-      if (duration < this.chordWindowMs) {
-        this.chord.push(e.key as Key)
-      } else {
-        this.chords.push(this.chord)
-        this.chord = [e.key as Key]
-        this.chordInitialKeyDownTime = now
-      }
-      this.lastKeyDownTime = now
+    this.lastKeyDownTime = performance.now()
+  }
+
+  onkeydownChord(e: KeyboardEvent) {
+    if (e.repeat) return
+    const key = e.key as Key
+
+    // 既存のタイマーをクリアして打鍵を追加
+    if (this.timer !== null) {
+      clearTimeout(this.timer)
+      this.timer = null
     }
-    // setTimeout(() => {
-    //   this.checkChords(now)
-    // }, this.chordWindowMs)
+
+    this.chord.push(key)
+
+    // 2打鍵に達した場合は即時確定（例: 2打鍵まで simultaneous の場合）
+    if (this.chord.length >= 2) {
+      this.flush()
+      return
+    }
+
+    // 1打鍵目の場合は、chordWindowMs だけ待ってから単打として確定
+    this.timer = window.setTimeout(() => {
+      this.flush()
+    }, this.chordWindowMs)
+  }
+
+  private flush() {
+    if (this.chord.length > 0) {
+      const currentChord = [...this.chord]
+      this.chord = []
+      if (this.timer !== null) {
+        clearTimeout(this.timer)
+        this.timer = null
+      }
+      // 確定した chord を IME 側のコールバックに通知！
+      this.onCommitChord(currentChord)
+    }
+  }
+
+  // IMEがオフになった時などのリセット用
+  reset() {
+    this.chord = []
+    if (this.timer) clearTimeout(this.timer)
+    this.timer = null
   }
 
   // private checkChords(triggerTime: number): void {

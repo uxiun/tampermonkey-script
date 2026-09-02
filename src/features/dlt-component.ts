@@ -44,19 +44,19 @@ export const candidateLink = (
                </div>`
 
   return `
-          <div style="flex: 0 1 auto; min-width: 0; overflow: hidden; padding: 5px 7px; background: ${bg}; border: ${border}; border-radius: 6px; box-shadow: ${boxShadow}; backdrop-filter: blur(4px); transition: all 0.08s ease; max-width: 100%;">
-            ${fgHtml}
-            <div style="color: ${isSelected ? "rgb(19, 24, 41)" : "#cdd6f4"}; ${option?.wrapTitle ? "" : "white-space: nowrap; text-overflow: ellipsis; overflow: hidden;"} font-size: ${option?.titleFontSize ?? "17px"};">
-            ${
-              // 文字列埋め込みは危険&バグる
-              option?.withId === false
-                ? `<span>${cand.title}</span>`
-                : `<span style="margin-right: 5px">${cand.title}</span>
-              <span style="font-size: 10px; font-family: monospace; opacity: .5;">${linkIdText(cand)}</span>
-              `
-            }
-            </div>
-          </div>
+    <div style="flex: 0 1 auto; min-width: 0; overflow: hidden; padding: 5px 7px; background: ${bg}; border: ${border}; border-radius: 6px; box-shadow: ${boxShadow}; backdrop-filter: blur(4px); transition: all 0.08s ease; max-width: 100%;">
+      ${fgHtml}
+      <div style="color: ${isSelected ? "rgb(19, 24, 41)" : "#cdd6f4"}; ${option?.wrapTitle ? "" : "white-space: nowrap; text-overflow: ellipsis; overflow: hidden;"} font-size: ${option?.titleFontSize ?? "17px"};">
+      ${
+        // 文字列埋め込みは危険&バグる
+        option?.withId === false
+          ? `<span>${cand.title}</span>`
+          : `<span style="margin-right: 5px">${cand.title}</span>
+        <span style="font-size: 10px; font-family: monospace; opacity: .5;">${linkIdText(cand)}</span>
+        `
+      }
+      </div>
+    </div>
         `
 }
 

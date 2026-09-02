@@ -5,12 +5,12 @@ import { watchDltPage } from "@/features/dlt-mutation"
 import { launchIME } from "@/features/ime"
 
 export default function runDlt() {
-  launchIME()
   dltIME({ suggestionNumbers: 10 })
   startLinkMemo({
     toggleKeys: ["l"], // Alt
     searchKeys: ["s", "/", "i"],
   })
+  launchIME()
   dltCursor()
   watchDltPage()
 }

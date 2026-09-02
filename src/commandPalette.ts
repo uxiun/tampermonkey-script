@@ -74,7 +74,7 @@ async function executeCommand(val: string) {
     case "cqkm": {
       const code = prompt("code")
       if (!code) return
-      const zs = await getZhCode(STORE_CODE, "cqkm", code)
+      const zs = await getZhCode("cqkm", code)
       console.log(zs)
       break
     }
@@ -93,7 +93,14 @@ async function executeCommand(val: string) {
       )
       const hans: Hanzi[] = await res.json()
       console.log("hans", hans)
-      putHansIDB(hans)
+
+      const completed = hans.map(h => ({
+        ...h,
+        date: new Date(),
+        on: true,
+        user: false,
+      }))
+      putHansIDB(completed)
       const hansStored = await getAllHansFromIDB()
       console.log("hansStored", hansStored)
       break
@@ -105,23 +112,32 @@ async function executeCommand(val: string) {
           "https://raw.githubusercontent.com/uxiun/ime-table-convert/main/json/zi-spells-21000.json",
         ),
       )
-      const codes: ZhCode[] = await res.json()
+      const _codes: ZhCode[] = await res.json()
+      const codes = _codes.map(c => ({
+        ...c,
+        date: new Date(),
+        on: true,
+        user: false,
+      }))
       console.log("codes", codes)
+
       putCodesIDB(codes)
       const codesStored = await getAllCodesFromIDB()
       console.log("codesStored", codesStored)
-      if (codes.length > codesStored.length) {
-        for (const stored of codesStored) {
-          let sames = codes.filter(
-            code =>
-              code.zh === stored.zh &&
-              code.code === stored.code &&
-              code.schema === stored.schema,
-          )
-          if (sames.length > 1) console.log("重複", sames)
-        }
-      }
-      console.log("重複は以上")
+
+      // if (codes.length > codesStored.length) {
+      //   for (const stored of codesStored) {
+      //     let sames = codes.filter(
+      //       code =>
+      //         code.zh === stored.zh &&
+      //         code.code === stored.code &&
+      //         code.schema === stored.schema,
+      //     )
+      //     if (sames.length > 1) console.log("重複", sames)
+      //   }
+      // }
+      // console.log("重複は以上")
+
       break
     }
 
@@ -150,7 +166,11 @@ async function executeCommand(val: string) {
 
       for (const s of spells) {
         const w = await zaoci("cqkm", s.zh)
-        if (w) words.push(w)
+        if (w)
+          words.push({
+            ...w,
+            user: false,
+          })
         if (words.length % 1000 === 0) {
           console.log("words:", words)
         }
