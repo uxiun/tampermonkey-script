@@ -2,7 +2,7 @@ import { isInput, transpose } from "@/pure/utils"
 import { candidateTip } from "./dlt-component"
 import { getPopupPosition } from "@/pure/dom"
 import { Key, KeyManager, Single } from "@/pure/key"
-import { showToast } from "@/pure/component"
+import { showToast, showToastAt } from "@/pure/component"
 import { kana, KANA_TABLE, katakana } from "@/pure/table"
 
 const DB_NAME = "ac_ime_db"
@@ -28,6 +28,15 @@ export interface Hanzi {
   on: boolean
   date: Date
   user: boolean
+}
+
+export const hanziInfo = (h: Hanzi): string => {
+  return [
+    h.zh,
+    `(${h.cqkmForm})`,
+    h.pinyins.join(" "),
+    `(${h.cj5.join(", ")})`,
+  ].join(" ")
 }
 
 export interface Cqkm {
@@ -459,7 +468,11 @@ export async function zaoci(schema: Schema, zh: string) {
         .join("")
     }
 
-    if (w.code.length > 0) return w
+    if (w.code.length > 0)
+      return {
+        word: w,
+        hans,
+      }
   }
 }
 
@@ -534,7 +547,7 @@ interface ImeState {
 }
 
 const state: ImeState = {
-  active: false,
+  active: true,
   schema: "cqkm",
   cache: {
     codes: [],
@@ -770,10 +783,12 @@ export const launchIME = async () => {
     const i = parseInt(t)
     if (Number.isNaN(i)) {
       const z = await zaoci(state.schema, t)
-      const code = prompt(`「${t}」の綴`, z?.code)
+      const infos = z ? ["", ...z.hans.map(hanziInfo)] : []
+      const msg = [`「${t}」の綴`, ...infos].join("\n")
+      const code = prompt(msg, z?.word.code)
       if (z && code) {
-        z.code = code
-        putWordsIDB([z])
+        z.word.code = code
+        putWordsIDB([z.word])
       }
     } else {
       zaociPrompt(i)
@@ -989,10 +1004,12 @@ export const launchIME = async () => {
         return
       }
 
-      if (e.key === "Tab" && state.buffer.length > 0) {
-        e.preventDefault()
-        e.stopImmediatePropagation()
-        setState.resetBuffer()
+      if (e.key === "Tab") {
+        if (state.buffer.length > 0) {
+          e.preventDefault()
+          e.stopImmediatePropagation()
+          setState.resetBuffer()
+        }
         return
       }
       if (e.key === "Escape" && state.buffer.length > 0) {
@@ -1030,12 +1047,20 @@ function renderWidget() {
 function commit() {
   if (!state.active || !state.target) return
   const cand = state.candidates[state.selectedIndex]
+
+  const coords = getPopupPosition(
+    state.target,
+    state.startPos,
+    "__ac_ime__mirror",
+  )
+
   setText(
     cand.text,
     state.startPos,
     state.endPos,
     "end", // move caret to insertion end
   )
+
   state.inputHistory = [...state.inputHistory, cand]
 
   if (state.selectedIndex > 0) {
@@ -1061,6 +1086,14 @@ function commit() {
   }
 
   setState.resetBuffer()
+
+  if (state.schema === "cj5" || state.schema === "cqkm") {
+    const hans = getHans(cand.text)
+    coords.top -= coords.lineHeight + 32
+    coords.left -= 5
+
+    hans.then(hans => showToastAt(hans.map(hanziInfo).join("  "), coords, 3000))
+  }
 }
 
 const setState = {

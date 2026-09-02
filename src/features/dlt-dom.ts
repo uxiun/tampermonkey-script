@@ -270,7 +270,7 @@ export const scrapeWithFgBg = (limitOwn = true) => {
     // fg一覧ページ: メインリストは main の bg（後景）
     // ハンガー内の .bg（他人の輪郭など）も結合
     const combinedBgIds = Array.from(
-      new Set([...listIds, ...hangerBg.map(l => l.id)]),
+      new Set([/*...listIds,*/ ...hangerBg.map(l => l.id)]),
     )
 
     r.main.fg = hangerFg.map(l => l.id)
@@ -289,7 +289,7 @@ export const scrapeWithFgBg = (limitOwn = true) => {
   } else if (isBgPage) {
     // bg一覧ページ: メインリストは main の fg（前景）
     const combinedFgIds = Array.from(
-      new Set([...listIds, ...hangerFg.map(l => l.id)]),
+      new Set([/*...listIds,*/ ...hangerFg.map(l => l.id)]),
     )
 
     r.main.fg = combinedFgIds
