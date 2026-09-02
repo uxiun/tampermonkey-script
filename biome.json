@@ -6,10 +6,12 @@
     "rules": {
       "correctness": {
         "useExhaustiveDependencies": "info",
-        "noUnreachable": "warn"
+        "noUnreachable": "warn",
+        "noUnusedVariables": "info"
       },
       "suspicious": {
-        "useIterableCallbackReturn": "info"
+        "useIterableCallbackReturn": "off",
+        "noExplicitAny": "info"
       },
       "style": {
         "useImportType": "off"

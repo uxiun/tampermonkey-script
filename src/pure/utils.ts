@@ -67,6 +67,8 @@ export function hasArrayChanged(
   return arr2.some(id => !set1.has(id))
 }
 
+export const transpose = <T>(a: T[][]) => a[0].map((_, c) => a.map(r => r[c]))
+
 export const isInput = () => {
   const activeEl = document.activeElement
   return Boolean(

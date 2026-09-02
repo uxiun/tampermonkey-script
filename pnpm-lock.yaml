@@ -8,6 +8,9 @@ importers:
 
   .:
     dependencies:
+      dexie:
+        specifier: ^4.4.5
+        version: 4.4.5
       iso-639-1:
         specifier: ^3.1.6
         version: 3.1.6
@@ -199,6 +202,9 @@ packages:
     resolution: {integrity: sha512-71Rod2AhcH3JhkBikVpNd0pA+fWsmAaVoti6OR38T76chA7vE3pSerS0Jor4wDw+tOueD2zLVvFOw5H0Rcj7rA==}
     engines: {node: '>= 0.6.x'}
 
+  dexie@4.4.5:
+    resolution: {integrity: sha512-wWCHdihT3dmlUSuNhn5mMZDWSpG0suxjAni7YjjiZdzabZcKmy3uNZGZ7AeYYXBoLbpSXX35fikPLkPC44Osiw==}
+
   dotenv@17.4.2:
     resolution: {integrity: sha512-nI4U3TottKAcAD9LLud4Cb7b2QztQMUEfHbvhTH09bqXTxnSie8WnjPALV/WMCrJZ6UV/qHJ6L03OqO3LcdYZw==}
     engines: {node: '>=12'}
@@ -348,6 +354,8 @@ snapshots:
   commander@1.1.1:
     dependencies:
       keypress: 0.1.0
+
+  dexie@4.4.5: {}
 
   dotenv@17.4.2: {}
 

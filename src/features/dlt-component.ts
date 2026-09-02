@@ -1,6 +1,8 @@
+import { removePrefix } from "@/pure/utils"
 import { linkIdText, PostLink } from "./dlt-storage"
+import { Cand } from "./ime"
 
-export interface CandidateTipOption {
+export interface CandidateLinkOption {
   withId: boolean // default: true
   withFg: boolean // default: true
   fgFontSize: string
@@ -9,11 +11,11 @@ export interface CandidateTipOption {
   fgLengthMax: number
 }
 
-export const candidateTip = (
+export const candidateLink = (
   idToLinkMap: Map<string, PostLink>,
   cand: PostLink,
   isSelected = false,
-  option?: Partial<CandidateTipOption>,
+  option?: Partial<CandidateLinkOption>,
 ) => {
   // const bg = isSelected ? "#313244" : "rgba(24, 24, 37, 0.88)"
   const bg = isSelected ? "rgb(204, 230, 255)" : "rgba(24, 24, 37, 0.88)"
@@ -56,4 +58,56 @@ export const candidateTip = (
             </div>
           </div>
         `
+}
+
+export interface CandidateOption {
+  fontSize: {
+    text: string
+    code: string
+    fg: string
+  }
+}
+
+export const candidateTip = (
+  cand: Cand,
+  code: string,
+  isSelected = false,
+  option?: Partial<CandidateOption>,
+) => {
+  const defaultOption: CandidateOption = {
+    fontSize: {
+      text: "17px",
+      code: "17px",
+      fg: "14px",
+    },
+  }
+
+  const bg = isSelected ? "rgb(204, 230, 255)" : "rgba(24, 24, 37, 0.88)"
+  const border = isSelected
+    ? "1px solid #89b4fa"
+    : "1px solid rgba(69, 71, 90, 0.6)"
+  const boxShadow = isSelected
+    ? "0 4px 14px rgba(137, 180, 250, 0.35)"
+    : "0 2px 6px rgba(0,0,0,0.3)"
+
+  const remCode = removePrefix(code, cand.code)
+  const fgtexts = [remCode]
+  const fghtml =
+    fgtexts.length === 0
+      ? ""
+      : `<div style="font-size: ${option?.fontSize?.fg ?? defaultOption.fontSize.fg}; color: ${isSelected ? "rgb(33, 95, 175)" : "#89b4fa"}; margin-bottom: 2px; white-space: nowrap; ${isSelected ? "font-weight: bold;" : ""}">
+                ${fgtexts.join("｜")}
+               </div>`
+
+  return `
+    <div style="flex: 0 1 auto; min-width: 0; overflow: hidden; padding: 5px 7px; background: ${bg}; border: ${border}; border-radius: 6px; box-shadow: ${boxShadow}; backdrop-filter: blur(4px); transition: all 0.08s ease; max-width: 100%;">
+      ${fghtml}
+      <div style="color: ${isSelected ? "rgb(19, 24, 41)" : "#cdd6f4"}; white-space: nowrap; text-overflow: ellipsis; overflow: hidden;font-size: ${option?.fontSize?.text ?? "17px"};">
+        <span style="margin-right: 5px">
+          ${cand.text}
+        </span>
+        <span style="font-size: ${option?.fontSize?.code ?? defaultOption.fontSize.code}; font-family: monospace; opacity: .5;">${""}</span>
+      </div>
+    </div>
+  `
 }

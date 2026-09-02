@@ -1,18 +1,19 @@
+import { isInput, transpose } from "@/pure/utils"
+import { candidateTip } from "./dlt-component"
+import { getPopupPosition } from "@/pure/dom"
+import { Key, Single } from "@/pure/key"
+import { showToast } from "@/pure/component"
+
 const DB_NAME = "ac_ime_db"
-const DB_VERSION = 1
-const STORE_HANZI = "hanzi"
-const STORE_CODE = "zhcode"
+const DB_VERSION = 2
+export const STORE_HANZI = "hanzi"
+export const STORE_CODE = "zhcode"
+export const STORE_WORD = "zhword"
 
 interface AsciiWord {
   word: string
-  spell: string
+  code: string
   lang: string
-}
-
-const ASCII_WORD: AsciiWord = {
-  word: "",
-  spell: "",
-  lang: "",
 }
 
 type CjkLang = "zh-cn" | "zh-tw" | "zh-hk" | "ja" | "ko"
@@ -22,7 +23,26 @@ export interface Hanzi {
   pinyins: string[]
   cj5: string[]
   cqkmForm: string | null
-  cqkmInitials: string[]
+  cqkmInitials?: string[]
+}
+
+export interface Cqkm {
+  zh: string
+  pinyins: string[]
+  cj5: string[]
+  cqkmForm: string
+  cqkmInitial: string
+}
+
+export const toCqkm = (h: Hanzi): Cqkm | undefined => {
+  if (h.cqkmForm && h.cqkmInitials?.length)
+    return {
+      zh: h.zh,
+      cj5: h.cj5,
+      cqkmForm: h.cqkmForm,
+      cqkmInitial: h.cqkmInitials[0],
+      pinyins: h.pinyins,
+    }
 }
 
 export interface ZhCode {
@@ -32,7 +52,15 @@ export interface ZhCode {
   nth: number
 }
 
-type Schema = "cqkm" | "cj5"
+export interface ZhWord {
+  zh: string
+  code: string
+  schema: Schema
+  nth: number
+  hans: Cqkm[]
+}
+
+type Schema = "cj5" | "cqkm" | "cqkm-xy"
 
 const HANZI_DEFAULT: Hanzi = {
   zh: "",
@@ -42,26 +70,9 @@ const HANZI_DEFAULT: Hanzi = {
   cqkmInitials: [],
 }
 
-type SyncMessage =
-  | { type: "code updated"; codes: ZhCode[] }
-  | { type: "hanzi updated"; hans: Hanzi[] }
+type SyncMessage<T> = { type: "updated"; items: T[] }
 
 const syncChannel = new BroadcastChannel("ac_ime_channel")
-
-export async function deleteObjectStore(storeName: string): Promise<void> {
-  return new Promise((resolve, reject) => {
-    const req = indexedDB.open(DB_NAME, DB_VERSION)
-
-    req.onupgradeneeded = _e => {
-      const db = req.result
-      if (db.objectStoreNames.contains(storeName)) {
-        db.deleteObjectStore(storeName)
-      }
-    }
-    req.onsuccess = () => resolve()
-    req.onerror = () => reject(req.error)
-  })
-}
 
 export function openDB(): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
@@ -89,6 +100,19 @@ export function openDB(): Promise<IDBDatabase> {
         const store = db.createObjectStore(STORE_CODE, {
           keyPath: ["zh", "code", "schema"],
         })
+        store.createIndex("code", "code")
+        store.createIndex("schema", "schema")
+        store.createIndex("nth", "nth")
+        store.createIndex("code-schema", ["code", "schema"], { unique: false })
+        store.createIndex("zh", "zh", { unique: false })
+      }
+      if (!db.objectStoreNames.contains(STORE_WORD)) {
+        const store = db.createObjectStore(STORE_WORD, {
+          keyPath: ["zh", "code", "schema"],
+        })
+        store.createIndex("code", "code")
+        store.createIndex("schema", "schema")
+        store.createIndex("nth", "nth")
         store.createIndex("code-schema", ["code", "schema"], { unique: false })
         store.createIndex("zh", "zh", { unique: false })
       }
@@ -117,6 +141,77 @@ async function getAllFromIDB<T>(storeName: string): Promise<T[]> {
   })
 }
 
+export async function getZhCode(
+  storeName: string,
+  schema: Schema,
+  searchPrefix: string,
+): Promise<[ZhCode[], ZhCode[]]> {
+  const db = await openDB()
+  const range = IDBKeyRange.bound(
+    searchPrefix,
+    searchPrefix + "\uffff",
+    true,
+    false,
+  )
+
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(storeName, "readonly")
+    const store = tx.objectStore(storeName)
+
+    const index = store.index("code")
+    const eq = index.getAll(searchPrefix)
+    eq.onsuccess = () => {
+      const eqs: ZhCode[] = eq.result
+      const req = index.getAll(range)
+      req.onsuccess = () => {
+        const codes: ZhCode[] = req.result
+        resolve(
+          [eqs, codes].map(zs => zs.filter(z => z.schema === schema)) as [
+            ZhCode[],
+            ZhCode[],
+          ],
+        )
+      }
+      req.onerror = () => reject(req.error)
+    }
+  })
+}
+
+export async function getZhWord(
+  schema: Schema,
+  searchPrefix: string,
+): Promise<[ZhWord[], ZhWord[]]> {
+  const db = await openDB()
+  const range = IDBKeyRange.bound(
+    searchPrefix,
+    searchPrefix + "\uffff",
+    true,
+    false,
+  )
+
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(STORE_WORD, "readonly")
+    const store = tx.objectStore(STORE_WORD)
+
+    const index = store.index("code")
+    const eq = index.getAll(searchPrefix)
+    eq.onsuccess = () => {
+      const eqs: ZhWord[] = eq.result
+      const req = index.getAll(range)
+      req.onsuccess = () => {
+        const codes: ZhWord[] = req.result
+        resolve(
+          [eqs, codes].map(zs => zs.filter(z => z.schema === schema)) as [
+            ZhWord[],
+            ZhWord[],
+          ],
+        )
+      }
+      req.onerror = () => reject(req.error)
+    }
+  })
+}
+
 export async function putCodesIDB(codes: ZhCode[]): Promise<void> {
   if (codes.length === 0) return
   const db = await openDB()
@@ -129,9 +224,33 @@ export async function putCodesIDB(codes: ZhCode[]): Promise<void> {
     })
 
     tx.oncomplete = () => {
-      const msg: SyncMessage = {
-        type: "code updated",
-        codes,
+      const msg: SyncMessage<ZhCode> = {
+        type: "updated",
+        items: codes,
+      }
+      syncChannel.postMessage(msg)
+      resolve()
+    }
+
+    tx.onerror = () => reject(tx.error)
+  })
+}
+
+export async function putWordsIDB(words: ZhWord[]): Promise<void> {
+  if (words.length === 0) return
+  const db = await openDB()
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(STORE_WORD, "readwrite")
+    const store = tx.objectStore(STORE_WORD)
+
+    words.forEach(code => {
+      store.put(code)
+    })
+
+    tx.oncomplete = () => {
+      const msg: SyncMessage<ZhWord> = {
+        type: "updated",
+        items: words,
       }
       syncChannel.postMessage(msg)
       resolve()
@@ -153,9 +272,9 @@ export async function putHansIDB(hans: Hanzi[]): Promise<void> {
     })
 
     tx.oncomplete = () => {
-      const msg: SyncMessage = {
-        type: "hanzi updated",
-        hans,
+      const msg: SyncMessage<Hanzi> = {
+        type: "updated",
+        items: hans,
       }
       syncChannel.postMessage(msg)
       resolve()
@@ -165,6 +284,495 @@ export async function putHansIDB(hans: Hanzi[]): Promise<void> {
   })
 }
 
-export const launchIME = () => {
+export async function getHans(hans: string): Promise<Hanzi[]> {
+  const db = await openDB()
+  const tx = db.transaction(STORE_HANZI, "readonly")
+  const store = tx.objectStore(STORE_HANZI)
+
+  // 1. 各文字の取得処理を Promise に変換する
+  const promises = hans.split("").map(h => {
+    return new Promise<Hanzi>((resolve, reject) => {
+      const r = store.get(h)
+
+      r.onsuccess = () => {
+        // データが存在すれば resolve、なければ undefined（またはお好みの処理）
+        resolve(r.result as Hanzi)
+      }
+
+      r.onerror = () => {
+        reject(r.error)
+      }
+    })
+  })
+
+  // 2. すべての Promise が完了するのを待って結果を返す
+  return Promise.all(promises)
+}
+
+export async function zaoci(schema: Schema, zh: string) {
+  const hans = await getHans(zh)
+
+  if (schema === "cqkm") {
+    const hs = hans.map(toCqkm).filter(Boolean) as Cqkm[]
+
+    const w: ZhWord = {
+      code: "",
+      hans: hs,
+      nth: 0,
+      schema,
+      zh,
+    }
+
+    if (hs.length === 0) {
+      console.log("hs.length 0")
+    } else if (hs.length === 2) {
+      w.code = [
+        hs.map(h => h.cqkmInitial + h.cqkmForm[0]),
+        hs.map(h => h.cqkmForm[1]),
+      ]
+        .flat()
+        .join("")
+
+      // const xy = [
+      //   hans.map(h => h.cqkmForm!.slice(0, 2)),
+      //   hans.map(h => h.cqkmInitials[0]),
+      // ]
+      //   .flat()
+      //   .join("")
+    } else if (hs.length === 3) {
+      w.code =
+        hs[0].cqkmInitial +
+        hs[0].cqkmForm[0] +
+        hs[1].cqkmInitial +
+        hs[2].cqkmInitial +
+        hs[1].cqkmForm[1] +
+        hs[2].cqkmForm[1] +
+        hs[1].cqkmForm[2] +
+        hs[2].cqkmForm[2]
+    } else if (hs.length === 4) {
+      w.code = transpose(
+        hs.map(h => [h.cqkmInitial, ...h.cqkmForm.slice(0, 2)]),
+      )
+        .map(k => k.join(""))
+        .join("")
+    } else if (hs.length > 4) {
+      w.code = transpose(
+        [...hs.slice(0, 4), hs[hs.length - 1]].map(h => [
+          h.cqkmInitial,
+          ...h.cqkmForm.slice(0, 2),
+        ]),
+      )
+        .map(k => k.join(""))
+        .join("")
+    }
+
+    if (w.code.length > 0) return w
+  }
+}
+
+export interface Cand {
+  text: string
+  code: string
+  v: CandVar
+}
+
+type CandVar = { type: "zhcode"; v: ZhCode } | { type: "zhword"; v: ZhWord }
+
+const fromZhCode = (z: ZhCode): Cand => ({
+  code: z.code,
+  text: z.zh,
+  v: { type: "zhcode", v: z },
+})
+
+const fromZhWord = (z: ZhWord): Cand => ({
+  code: z.code,
+  text: z.zh,
+  v: { type: "zhword", v: z },
+})
+
+interface ImeConfig {
+  keys: KeyConfig
+  schema: Record<Schema, SchemaConfig>
+  layout?: Record<Schema, CodeMapToBase>
+}
+
+type CodeMapToBase = Map<string, string> // 受け取った入力 > 元のcodeに変換
+
+interface KeyConfig {
+  toggleActive: Single
+  commitNthKeys: Single[]
+  selectUpDownKeys: [Single, Single]
+}
+
+interface SchemaConfig {
+  codeKeys: Key[]
+  keys?: KeyConfig
+  doublePress?: {
+    codeKey: string
+    intervalMsec: number
+    orderSensitive: boolean
+  }
+  changeSchema: {
+    type: "autoChangeAfter"
+    autoFlip?: Schema
+  }
+}
+
+// let config: ImeConfig = {
+//   keys: {
+//     commitNthKeys: [" "],
+//     selectUpDownKeys: ["ArrowUp", "ArrowDown"],
+//     toggleActive: {
+//       key: "j",
+//       modifiers: ["CtrlLeft"]
+//     }
+//   },
+
+//   schema: {
+//     cqkm:
+//   }
+// }
+
+interface ImeState {
+  active: boolean
+  candidates: Cand[]
+  cache: {
+    codes: ZhCode[]
+  }
+  selectedIndex: number
+  startPos: number
+  endPos: number
+  schema: Schema
+  buffer: string
+  inputHistory: (string | Cand)[]
+  target: null | HTMLInputElement | HTMLTextAreaElement
+}
+
+const state: ImeState = {
+  active: false,
+  schema: "cqkm",
+  cache: {
+    codes: [],
+  },
+  inputHistory: [],
+  buffer: "",
+  candidates: [],
+  endPos: 0,
+  selectedIndex: 0,
+  startPos: 0,
+  target: null,
+}
+
+type InputElement = HTMLInputElement | HTMLTextAreaElement
+
+class InlineSuggestPopup {
+  private el: HTMLDivElement
+
+  constructor() {
+    this.el = document.createElement("div")
+    this.el.id = "ac-inline-ime-popup"
+    Object.assign(this.el.style, {
+      position: "fixed",
+      zIndex: "3000000000",
+      background: "transparent",
+      border: "none",
+      boxShadow: "none",
+      padding: "4px",
+      display: "none",
+      // maxWidth: "520px", // 💡 横方向に敷き詰めるための適切な最大幅
+      overflowY: "auto",
+      fontFamily: "monospace",
+      fontSize: "13px",
+    })
+    document.body.appendChild(this.el)
+  }
+
+  show(
+    coords: { top: number; left: number },
+    selectedIndex: number,
+    // _optionNumbers: number,
+  ) {
+    if (state.candidates.length === 0) {
+      this.hide()
+      return
+    }
+
+    // 画面全体の有効な横幅を取得（スクロールバーを含まない幅）
+    const client = {
+      width: document.documentElement.clientWidth,
+      height: document.documentElement.clientHeight,
+    }
+    const maxWidth = client.width - coords.left - 16
+    const maxHeight = client.height - coords.top - 16
+
+    Object.assign(
+      this.el.style,
+      maxWidth < 200
+        ? {
+            right: "16px",
+            maxWidth: "200px",
+          }
+        : {
+            left: `${coords.left}px`,
+            maxWidth: `${maxWidth}px`,
+          },
+    )
+
+    // 💡 Flex-wrap で横向きレンガ状に敷き詰める設定
+    Object.assign(this.el.style, {
+      top: `${coords.top}px`,
+      display: "flex",
+      flexWrap: "wrap",
+      gap: "6px",
+      maxHeight: `${maxHeight}px`,
+      alignItems: "flex-end",
+    })
+
+    this.el.innerHTML = [
+      candidateTip(
+        {
+          code: "",
+          text: state.buffer,
+          v: {
+            type: "zhcode",
+            v: {
+              code: "",
+              nth: 0,
+              schema: state.schema,
+              zh: "",
+            },
+          },
+        },
+        "",
+        true,
+      ),
+      ...state.candidates.slice(0, 10).map((cand, idx) => {
+        const isSelected = idx === selectedIndex
+        return candidateTip(cand, state.buffer, isSelected)
+      }),
+    ].join("")
+
+    // 選択中のチップへの自動スクロール追従
+    const selectedEl = this.el.children[selectedIndex] as HTMLElement
+    if (selectedEl) {
+      selectedEl.scrollIntoView({ block: "nearest", inline: "nearest" })
+    }
+  }
+
+  hide() {
+    this.el.style.display = "none"
+  }
+}
+
+const inlinePopup = new InlineSuggestPopup()
+
+export const launchIME = async () => {
   console.log("AutoControl.launchIME")
+  if ((window as any).__ac_ime__) return
+  ;(window as any).__ac_ime__ = true
+
+  state.cache.codes = await getAllCodesFromIDB()
+  state.cache.codes.sort((a, b) => a.code.localeCompare(b.code))
+  console.log("initial IME state", state)
+
+  window.addEventListener(
+    "keydown",
+    e => {
+      const target = e.target as HTMLTextAreaElement | HTMLInputElement
+      if (!state.active) {
+        if (isInput() && e.ctrlKey && e.key === "j") {
+          e.preventDefault()
+          e.stopImmediatePropagation()
+          setState.activate()
+          showToast("IME ON")
+          return
+        }
+      }
+
+      if (!state.active || !isInput()) return
+      state.target = target
+
+      if (e.ctrlKey && e.key === "j") {
+        e.preventDefault()
+        e.stopImmediatePropagation()
+        setState.diactivate()
+        showToast("IME OFF")
+        return
+      }
+
+      if (e.key === " ") {
+        if (state.candidates.length > 0) {
+          e.preventDefault()
+          e.stopImmediatePropagation()
+          commit()
+        }
+        return
+      }
+
+      if (e.key === "Backspace") {
+        if (state.buffer.length > 0) {
+          e.preventDefault()
+          e.stopImmediatePropagation()
+          state.buffer = state.buffer.slice(0, -1)
+          if (state.buffer.length === 0) setState.resetBuffer()
+          else {
+            state.selectedIndex = 0
+            updateCandidateRender()
+          }
+        } else if (isAfterIMEInput(target)) {
+          e.preventDefault()
+          e.stopImmediatePropagation()
+          const n = lastInputText()!.length
+          setText("", state.startPos - n, state.startPos, "end")
+          state.inputHistory = state.inputHistory.slice(-1)
+        }
+        return
+      }
+
+      if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+        if (state.candidates.length > 0) {
+          e.preventDefault()
+          e.stopImmediatePropagation()
+          if (e.key === "ArrowDown") state.selectedIndex += 1
+          if (e.key === "ArrowUp") state.selectedIndex -= 1
+          renderWidget()
+        }
+        return
+      }
+
+      if (e.key === "Escape" && state.buffer.length > 0) {
+        e.preventDefault()
+        e.stopImmediatePropagation()
+        setState.resetBuffer()
+        return
+      }
+
+      if (/[a-z]/.test(e.key)) {
+        e.preventDefault()
+        e.stopImmediatePropagation()
+        state.active = true
+        state.target = target
+        state.startPos = target.selectionStart ?? 0
+        state.endPos = target.selectionEnd ?? 0
+        state.buffer += e.key
+        updateCandidateRender()
+        return
+      }
+    },
+    true,
+  )
+}
+
+function renderWidget() {
+  if (!state.active || !state.target) {
+    inlinePopup.hide()
+    return
+  }
+  const coords = getPopupPosition(
+    state.target,
+    state.startPos,
+    "__ac_ime__mirror",
+  )
+  inlinePopup.show(coords, state.selectedIndex)
+}
+
+function commit() {
+  if (!state.active || !state.target) return
+  const cand = state.candidates[state.selectedIndex]
+  setText(
+    cand.text,
+    state.startPos,
+    state.endPos,
+    "end", // move caret to insertion end
+  )
+
+  state.inputHistory = [...state.inputHistory, cand]
+  setState.resetBuffer()
+}
+
+const setState = {
+  activate: () => {
+    state.active = true
+    setState.resetBuffer()
+  },
+
+  diactivate: () => {
+    state.active = false
+    setState.resetBuffer()
+  },
+
+  resetBuffer: () => {
+    state.buffer = ""
+    state.candidates = []
+    state.selectedIndex = 0
+    inlinePopup.hide()
+  },
+}
+
+const lastInputText = () => {
+  const last = state.inputHistory[state.inputHistory.length - 1]
+  if (!last) return undefined
+  return typeof last === "string" ? last : last.text
+}
+
+const isAfterIMEInput = (target: InputElement) => {
+  const last = lastInputText()
+  if (!last) return false
+  return target.value.slice(0, state.startPos).endsWith(last)
+}
+
+function setText(
+  text: string,
+  start: number,
+  end: number,
+  mode: SelectionMode,
+) {
+  if (!state.target) return
+  state.target.setRangeText(text, start, end, mode)
+  state.target.dispatchEvent(new Event("input", { bubbles: true }))
+}
+
+function getInlineImeContext(inputEl: HTMLTextAreaElement | HTMLInputElement) {
+  const start = inputEl.selectionStart ?? 0
+  const end = inputEl.selectionEnd ?? 0
+  return {
+    start,
+    end,
+  }
+}
+
+async function updateCandidateRender() {
+  const exact = state.cache.codes.filter(
+    z => z.schema === state.schema && z.code === state.buffer,
+  )
+  const prefixed = state.cache.codes
+    .filter(z => z.schema === state.schema && z.code.startsWith(state.buffer))
+    .slice(exact.length)
+
+  // const [matchz, nextz] = await getZhCode(
+  //   STORE_CODE,
+  //   state.schema,
+  //   state.buffer,
+  // )
+
+  const [matchw, nextw] = await getZhWord(state.schema, state.buffer)
+
+  // const nexts = [
+  //   ...nextz.map(fromZhCode),
+  //   ...nextw.map(fromZhWord)
+  // ].sort((a, b) =>
+  //     a.code.length === b.code.length
+  //   ? ([a.code, b.code].sort()[0] === a.code ? -1 : 1)
+  //   : a.code.length - b.code.length)
+
+  state.candidates = [
+    ...exact.map(fromZhCode),
+    ...matchw.map(fromZhWord),
+    ...prefixed.map(fromZhCode),
+    ...nextw.map(fromZhWord),
+  ]
+
+  state.selectedIndex = 0
+  if (state.candidates.length === 1) commit()
+  else renderWidget()
 }

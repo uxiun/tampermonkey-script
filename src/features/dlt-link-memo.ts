@@ -14,7 +14,6 @@ import {
   linkIdText,
   MergeLinkResult,
   mergeLinksFast,
-  overwriteBackupLinks,
   PostLink,
   postLinkText,
   postLinkTextList,
@@ -24,7 +23,7 @@ import {
 } from "./dlt-storage"
 import { dltkeys } from "./keys"
 import { HintMap, linkHint } from "./link-hint"
-import { candidateTip } from "./dlt-component"
+import { candidateLink } from "./dlt-component"
 import { dltShortcuts } from "./dlt-shortcuts"
 import outlinerShortcuts from "./dlt-outliner"
 import { isImeActive } from "./dlt-ime"
@@ -42,7 +41,7 @@ export interface AppState {
   lastAddedCount: number
 }
 
-let appState: AppState = {
+const appState: AppState = {
   history: [],
   isWidgetActive: false,
   leftDock: [],
@@ -691,7 +690,7 @@ export function renderWidget(state: AppState) {
     floatingDock.innerHTML = state.leftDock
       .map(
         link =>
-          candidateTip(idToLinkMap, link, true, {
+          candidateLink(idToLinkMap, link, true, {
             withId: false,
             withFg: false,
             fgFontSize: "8px",
@@ -792,7 +791,7 @@ export function renderWidget(state: AppState) {
     listPane.style.cssText = floatingDockCss
     listPane.innerHTML = getPagedItems(state)
       .map((link, i) =>
-        candidateTip(idToLinkMap, link, state.cursorIndex === i, {
+        candidateLink(idToLinkMap, link, state.cursorIndex === i, {
           wrapTitle: true,
         }),
       )
@@ -816,7 +815,7 @@ export function renderWidget(state: AppState) {
   }
 }
 
-async function executeCopy(links: PostLink[]) {
+async function _executeCopy(links: PostLink[]) {
   for (const link of links) {
     const s = postLinkText(link)
     await ACtl.setClipboard(s)
@@ -853,7 +852,7 @@ function executeLinkOperation(links: PostLink[], at: string) {
                   )
                   return fg && bg ? [fg, bg] : []
                 },
-                action: (element, state) => {
+                action: (element, _state) => {
                   let input: null | HTMLInputElement = null
                   if (element.nodeName === "A") {
                     input = el.querySelector(

@@ -31,9 +31,80 @@ export function getVisibleElements(
   })
 }
 
-const selectObserve =
-  (selectors: string, observeOption: MutationObserverInit) =>
-  (observer: MutationObserver) => {
-    const target = document.querySelector(selectors)
-    if (target) observer.observe(target, observeOption)
+export function getPopupPosition(
+  inputEl: HTMLTextAreaElement | HTMLInputElement,
+  startPos: number,
+  mirrorElementId: string,
+) {
+  console.log({ inputEl, startPos })
+
+  let mirrorEl = document.getElementById(mirrorElementId)
+  if (!mirrorEl) {
+    mirrorEl = document.createElement("div")
+    mirrorEl.id = mirrorElementId
+    Object.assign(mirrorEl.style, {
+      position: "absolute",
+      visibility: "hidden",
+      whiteSpace: "pre-wrap",
+      wordWrap: "break-word",
+    })
+    document.body.appendChild(mirrorEl)
   }
+
+  function _getPopupPosition(
+    inputEl: HTMLTextAreaElement | HTMLInputElement,
+    startPos: number,
+  ) {
+    if (!mirrorEl)
+      return {
+        top: 0,
+        left: 0,
+      }
+
+    const rect = inputEl.getBoundingClientRect()
+    const styles = window.getComputedStyle(inputEl)
+
+    const properties = [
+      "fontFamily",
+      "fontSize",
+      "fontWeight",
+      "paddingTop",
+      "paddingRight",
+      "paddingBottom",
+      "paddingLeft",
+      "lineHeight",
+      "borderWidth",
+    ]
+    properties.forEach(prop => {
+      mirrorEl!.style[prop as any] = styles[prop as any]
+    })
+    mirrorEl.style.width = `${rect.width}px`
+
+    const textBeforeBrace = inputEl.value.slice(0, startPos)
+    mirrorEl.textContent = textBeforeBrace
+
+    const marker = document.createElement("span")
+    marker.textContent = "{"
+    mirrorEl.appendChild(marker)
+
+    return inputEl.getAttribute("id") === "kw"
+      ? {
+          top:
+            rect.top +
+            marker.offsetTop +
+            (parseFloat(styles.lineHeight) || 20) +
+            inputEl.scrollTop,
+          left: rect.left + marker.offsetLeft - inputEl.scrollLeft,
+        }
+      : {
+          top:
+            rect.top +
+            marker.offsetTop +
+            (parseFloat(styles.lineHeight) || 20) +
+            inputEl.scrollTop,
+          left: rect.left + marker.offsetLeft - inputEl.scrollLeft,
+        }
+  }
+
+  return _getPopupPosition(inputEl, startPos)
+}

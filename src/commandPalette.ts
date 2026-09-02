@@ -11,11 +11,18 @@ import {
 import {
   getAllCodesFromIDB,
   getAllHansFromIDB,
+  getHans,
+  getZhCode,
   Hanzi,
   putCodesIDB,
   putHansIDB,
+  putWordsIDB,
+  STORE_CODE,
+  zaoci,
   ZhCode,
+  ZhWord,
 } from "./features/ime"
+// import { db } from "./features/ime-db"
 
 export function showCommandPalette() {
   if (document.getElementById("ac-palette")) return
@@ -64,6 +71,19 @@ async function executeCommand(val: string) {
   console.log("実行するコマンド:", val)
 
   switch (val) {
+    case "cqkm": {
+      const code = prompt("code")
+      if (!code) return
+      const zs = await getZhCode(STORE_CODE, "cqkm", code)
+      console.log(zs)
+      break
+    }
+    case "get codes": {
+      const codesStored = await getAllCodesFromIDB()
+      console.log(codesStored)
+      break
+    }
+
     case "ime hanzi": {
       const res = await fetch(
         new Request(
@@ -78,6 +98,7 @@ async function executeCommand(val: string) {
       console.log("hansStored", hansStored)
       break
     }
+
     case "ime code": {
       const res = await fetch(
         new Request(
@@ -101,6 +122,43 @@ async function executeCommand(val: string) {
         }
       }
       console.log("重複は以上")
+      break
+    }
+
+    case "hans": {
+      const text = prompt("漢字を取得したい文字列")
+      if (!text) return
+      const hans = await getHans(text)
+      console.log(hans)
+      break
+    }
+
+    case "ime zhwords": {
+      const res = await fetch(
+        new Request(
+          "https://raw.githubusercontent.com/uxiun/ime-table-convert/main/json/cqkm-word.json",
+        ),
+      )
+
+      const spells: { zh: string; spell: string }[] = await res.json()
+      const words: ZhWord[] = []
+
+      // for (const s of spells.slice(0, 20)) {
+      //   const w = await zaoci("cqkm", s.zh)
+      //   console.log("word", w)
+      // }
+
+      for (const s of spells) {
+        const w = await zaoci("cqkm", s.zh)
+        if (w) words.push(w)
+        if (words.length % 1000 === 0) {
+          console.log("words:", words)
+        }
+      }
+
+      console.log("words total length:", words.length)
+      putWordsIDB(words)
+      console.log("putWordsIDB DONE")
 
       break
     }

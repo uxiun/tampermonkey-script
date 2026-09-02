@@ -1,11 +1,5 @@
-import { removePrefix } from "@/pure/utils"
 import {
   DLT_DOCK_KEY,
-  DLT_HISTORY_KEY,
-  DLT_MY_ID,
-  getHistoryFromLocalStorage,
-  getLinksFromLocalStorage,
-  linkIdText,
   mergeLinksFast,
   mergeLinksStorage,
   PostLink,
@@ -18,7 +12,7 @@ import {
   mergeLinksToIDB,
   setupTabSyncListener,
 } from "./dlt-db"
-import { candidateTip } from "./dlt-component"
+import { candidateLink } from "./dlt-component"
 
 type IMEOption = {
   suggestionNumbers: number
@@ -362,7 +356,7 @@ class InlineSuggestPopup {
     this.el.innerHTML = candidates
       .map((cand, idx) => {
         const isSelected = idx === selectedIndex
-        return candidateTip(historyMap, cand, isSelected)
+        return candidateLink(historyMap, cand, isSelected)
 
         const bg = isSelected ? "#313244" : "rgba(24, 24, 37, 0.88)"
         const border = isSelected
