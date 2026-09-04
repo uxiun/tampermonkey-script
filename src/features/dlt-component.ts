@@ -66,11 +66,16 @@ export interface CandidateOption {
     code: string
     fg: string
   }
+  fontFamily?: {
+    text?: string
+    code?: string
+    fg?: string
+  }
 }
 
 export const candidateTip = (
   cand: Cand,
-  code: string,
+  buffer: string,
   isSelected = false,
   option?: Partial<CandidateOption>,
 ) => {
@@ -79,6 +84,9 @@ export const candidateTip = (
       text: "17px",
       code: "17px",
       fg: "14px",
+    },
+    fontFamily: {
+      fg: "Iosevka NF Regular, monospace",
     },
   }
 
@@ -90,12 +98,21 @@ export const candidateTip = (
     ? "0 4px 14px rgba(137, 180, 250, 0.35)"
     : "0 2px 6px rgba(0,0,0,0.3)"
 
-  const remCode = removePrefix(code, cand.code)
+  const remCode = cand.suffix
+    ? `(${cand.suffix})`
+    : removePrefix(buffer, cand.code)
+
   const fgtexts = [remCode]
   const fghtml =
     fgtexts.length === 0
       ? ""
-      : `<div style="font-size: ${option?.fontSize?.fg ?? defaultOption.fontSize.fg}; color: ${isSelected ? "rgb(33, 95, 175)" : "#89b4fa"}; margin-bottom: 2px; white-space: nowrap; ${isSelected ? "font-weight: bold;" : ""}">
+      : `<div style="
+      font-size: ${option?.fontSize?.fg ?? defaultOption.fontSize.fg};
+      ${defaultOption?.fontFamily?.fg ? `font-family: ${defaultOption.fontFamily.fg};` : ""}
+      color: ${isSelected ? "rgb(33, 95, 175)" : "#89b4fa"};
+      margin-bottom: 2px;
+      white-space: nowrap;
+      ${isSelected ? "font-weight: bold;" : ""}">
                 ${fgtexts.join("｜")}
                </div>`
 

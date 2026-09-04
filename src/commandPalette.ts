@@ -85,10 +85,13 @@ async function executeCommand(val: string) {
     }
 
     case "ime hanzi": {
+      const url = prompt("json URL")
+      if (!url) return
       const res = await fetch(
         new Request(
-          "https://raw.githubusercontent.com/uxiun/ime-table-convert/main/json/cqkm-cj5-21000.json",
-          // "../table/cqkm-cj5-21000.json",
+          url,
+          // "https://raw.githubusercontent.com/uxiun/ime-table-convert/main/json/cqkm-cj5-21000.json",
+          // "https://raw.githubusercontent.com/uxiun/ime-table-convert/main/json/Cangjie5_special_hans_custom.json",
         ),
       )
       const hans: Hanzi[] = await res.json()
@@ -107,9 +110,13 @@ async function executeCommand(val: string) {
     }
 
     case "ime code": {
+      const url = prompt("json URL")
+      if (!url) return
       const res = await fetch(
         new Request(
-          "https://raw.githubusercontent.com/uxiun/ime-table-convert/main/json/zi-spells-21000.json",
+          url,
+          // "https://raw.githubusercontent.com/uxiun/ime-table-convert/main/json/zi-spells-21000.json",
+          // "https://raw.githubusercontent.com/uxiun/ime-table-convert/main/json/Cangjie5_special_codes_custom.json",
         ),
       )
       const _codes: ZhCode[] = await res.json()
@@ -141,18 +148,13 @@ async function executeCommand(val: string) {
       break
     }
 
-    case "hans": {
-      const text = prompt("漢字を取得したい文字列")
-      if (!text) return
-      const hans = await getHans(text)
-      console.log(hans)
-      break
-    }
-
     case "ime zhwords": {
+      const url = prompt("json URL")
+      if (!url) return
       const res = await fetch(
         new Request(
-          "https://raw.githubusercontent.com/uxiun/ime-table-convert/main/json/cqkm-word.json",
+          url,
+          // "https://raw.githubusercontent.com/uxiun/ime-table-convert/main/json/cqkm-word.json",
         ),
       )
 
@@ -166,12 +168,18 @@ async function executeCommand(val: string) {
 
       for (const s of spells) {
         const w = await zaoci("cqkm", s.zh)
+        const x = await zaoci("cqkmxy", s.zh)
         if (w)
           words.push({
-            ...w,
+            ...w.word,
             user: false,
           })
-        if (words.length % 1000 === 0) {
+        if (x)
+          words.push({
+            ...x.word,
+            user: false,
+          })
+        if (words.length % 2000 === 0) {
           console.log("words:", words)
         }
       }
@@ -180,6 +188,14 @@ async function executeCommand(val: string) {
       putWordsIDB(words)
       console.log("putWordsIDB DONE")
 
+      break
+    }
+
+    case "hans": {
+      const text = prompt("漢字を取得したい文字列")
+      if (!text) return
+      const hans = await getHans(text)
+      console.log(hans)
       break
     }
 

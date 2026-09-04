@@ -90,12 +90,20 @@ export function getPopupPosition(
 
     return inputEl.getAttribute("id") === "kw"
       ? {
-          top: rect.top + marker.offsetTop + lineHeight + inputEl.scrollTop,
+          top:
+            rect.top +
+            marker.offsetTop +
+            (parseFloat(styles.lineHeight) || 20) +
+            inputEl.scrollTop,
           left: rect.left + marker.offsetLeft - inputEl.scrollLeft,
           lineHeight,
         }
       : {
-          top: rect.top + marker.offsetTop + lineHeight + inputEl.scrollTop,
+          top:
+            rect.top +
+            marker.offsetTop +
+            (parseFloat(styles.lineHeight) || 20) +
+            inputEl.scrollTop,
           left: rect.left + marker.offsetLeft - inputEl.scrollLeft,
           lineHeight,
         }

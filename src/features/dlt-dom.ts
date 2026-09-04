@@ -279,13 +279,13 @@ export const scrapeWithFgBg = (limitOwn = true) => {
     r.fg = [...r.fg, ...hangerFg]
     r.bg = [...r.bg, ...hangerBg]
 
-    // 3. リスト側要素の fg に main.id を双方向補填
-    r.list.forEach(item => {
-      if (!item.fg) item.fg = []
-      if (!item.fg.includes(main.id)) {
-        item.fg.unshift(main.id)
-      }
-    })
+    // // 3. リスト側要素の fg に main.id を双方向補填
+    // r.list.forEach(item => {
+    //   if (!item.fg) item.fg = []
+    //   if (!item.fg.includes(main.id)) {
+    //     item.fg.unshift(main.id)
+    //   }
+    // })
   } else if (isBgPage) {
     // bg一覧ページ: メインリストは main の fg（前景）
     const combinedFgIds = Array.from(
@@ -298,13 +298,13 @@ export const scrapeWithFgBg = (limitOwn = true) => {
     r.fg = [...r.fg, ...hangerFg]
     r.bg = [...r.bg, ...hangerBg]
 
-    // リスト側要素の bg に main.id を双方向補填
-    r.list.forEach(item => {
-      if (!item.bg) item.bg = []
-      if (!item.bg.includes(main.id)) {
-        item.bg.unshift(main.id)
-      }
-    })
+    // // リスト側要素の bg に main.id を双方向補填
+    // r.list.forEach(item => {
+    //   if (!item.bg) item.bg = []
+    //   if (!item.bg.includes(main.id)) {
+    //     item.bg.unshift(main.id)
+    //   }
+    // })
   }
 
   console.log("scrapeWithFgBg:", r)

@@ -40,10 +40,13 @@ export function showToastAt(
   message: string,
   coords: { top: number; left: number },
   durationMs = 2500,
+  zIndex = 1000,
 ) {
   // 1. ツールチップの要素を作成
   const toast = document.createElement("div")
   toast.textContent = message
+
+  coords.top = coords.top < 20 ? Math.max(coords.top, 0) + 50 : coords.top
 
   // 2. 左下に固定するスタイルを適用
   Object.assign(toast.style, {
@@ -56,7 +59,7 @@ export function showToastAt(
     borderRadius: "6px",
     fontSize: "14px",
     fontFamily: "sans-serif",
-    zIndex: "90000000", // 他の要素の裏に隠れないように最前面へ
+    zIndex, // 他の要素の裏に隠れないように最前面へ
     opacity: "0",
     transition: "opacity 0.2s ease", // 自然に消えるフェード効果
     pointerEvents: "none", // クリックの邪魔にならないようにする

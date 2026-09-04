@@ -1,3 +1,23 @@
+export const mergeObjects = <T, K extends keyof T>(
+  hasDuplicate: T[],
+  keys: K[],
+): T[] => {
+  const seen = new Map<string, T>()
+
+  for (const item of hasDuplicate) {
+    // 指定された複数のキーの値を結合して、一意の識別子（複合キー）を作る
+    const compositeKey = keys.map(key => String(item[key])).join("::")
+
+    // まだ登録されていない複合キーの場合のみ、Mapに記録する（最初の要素が優先される）
+    if (!seen.has(compositeKey)) {
+      seen.set(compositeKey, item)
+    }
+  }
+
+  // Mapの値を配列にして返す
+  return Array.from(seen.values())
+}
+
 export const sleep = (ms: number) =>
   new Promise(resolve => setTimeout(resolve, ms))
 

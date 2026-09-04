@@ -27,6 +27,7 @@ import { candidateLink } from "./dlt-component"
 import { dltShortcuts } from "./dlt-shortcuts"
 import outlinerShortcuts from "./dlt-outliner"
 import { isImeActive } from "./dlt-ime"
+import { backupUserAdded } from "./ime"
 
 export interface AppState {
   history: PostLink[]
@@ -543,6 +544,12 @@ export async function startLinkMemo(option: LinkMemoOption) {
           showToast(msg)
           break
         }
+
+        case "u": {
+          await backupUserAdded()
+          break
+        }
+
         case "y": {
           e.preventDefault()
           e.stopPropagation()

@@ -1,3 +1,10 @@
+import {
+  getAllCodesFromIDB,
+  getAllHansFromIDB,
+  ZhCode,
+  ZhWord,
+} from "@/features/ime"
+
 export type Key =
   | "q"
   | "w"

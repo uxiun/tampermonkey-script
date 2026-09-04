@@ -1,9 +1,11 @@
-import { isInput, transpose } from "@/pure/utils"
+import { isInput, mergeObjects, removePrefix, transpose } from "@/pure/utils"
 import { candidateTip } from "./dlt-component"
 import { getPopupPosition } from "@/pure/dom"
 import { Key, KeyManager, Single } from "@/pure/key"
 import { showToast, showToastAt } from "@/pure/component"
 import { kana, KANA_TABLE, katakana } from "@/pure/table"
+import { dir } from "node:console"
+import { getSuffixes, KEYS } from "./keys"
 
 const DB_NAME = "ac_ime_db"
 const DB_VERSION = 2
@@ -34,8 +36,9 @@ export const hanziInfo = (h: Hanzi): string => {
   return [
     h.zh,
     `(${h.cqkmForm})`,
+    `"${h.cqkmInitials?.join("")}"`,
     h.pinyins.join(" "),
-    `(${h.cj5.join(", ")})`,
+    `[${h.cj5.join(", ")}]`,
   ].join(" ")
 }
 
@@ -67,6 +70,7 @@ export interface ZhCode {
   date: Date // 追加変更日時
   user: boolean
 }
+const CODE_KEYPATH = ["zh", "code", "schema"] as const
 
 export interface ZhWord {
   zh: string
@@ -79,7 +83,7 @@ export interface ZhWord {
   user: boolean // user added or not
 }
 
-type Schema = "cj5" | "cqkm" | "cqkm-xy" | "hiragana" | "katakana"
+type Schema = "cj5" | "cqkm" | "cqkmxy" | "hiragana" | "katakana"
 
 type SyncMessage<T> = { type: "updated" | "deleted"; items: T[] }
 
@@ -112,7 +116,7 @@ export function openDB(): Promise<IDBDatabase> {
 
       if (!db.objectStoreNames.contains(STORE_CODE)) {
         const store = db.createObjectStore(STORE_CODE, {
-          keyPath: ["zh", "code", "schema"],
+          keyPath: [...CODE_KEYPATH],
         })
         store.createIndex("code", "code")
         store.createIndex("schema", "schema")
@@ -127,13 +131,14 @@ export function openDB(): Promise<IDBDatabase> {
 
       if (!db.objectStoreNames.contains(STORE_WORD)) {
         const store = db.createObjectStore(STORE_WORD, {
-          keyPath: ["zh", "code", "schema"],
+          keyPath: [...CODE_KEYPATH],
         })
         store.createIndex("code", "code")
         store.createIndex("schema", "schema")
         store.createIndex("nth", "nth")
         store.createIndex("on", "on")
         store.createIndex("date", "date")
+        store.createIndex("user", "user")
         store.createIndex("codeNth", ["code", "nth"])
         store.createIndex("schemaCodeNth", ["schema", "code", "nth"])
         store.createIndex("zh", "zh", { unique: false })
@@ -163,41 +168,90 @@ async function getAllFromIDB<T>(storeName: string): Promise<T[]> {
   })
 }
 
-// export async function getZhCode(
-//   storeName: string,
-//   schema: Schema,
-//   searchPrefix: string,
-// ): Promise<[ZhCode[], ZhCode[]]> {
-//   const db = await openDB()
-//   const range = IDBKeyRange.bound(
-//     searchPrefix,
-//     searchPrefix + "\uffff",
-//     true,
-//     false,
-//   )
+const IME_USER_ADDED_BACKUP_PATH = "<documents>/autocontrol-ime-user-added.json"
+interface UserAddedBackup {
+  codes: ZhCode[]
+  words: ZhWord[]
+  hans: Hanzi[]
+}
 
-//   return new Promise((resolve, reject) => {
-//     const tx = db.transaction(storeName, "readonly")
-//     const store = tx.objectStore(storeName)
+export async function backupUserAdded() {
+  const backup: UserAddedBackup = await ACtl.getFile(
+    IME_USER_ADDED_BACKUP_PATH,
+    "json",
+  ).catch(async _err => {
+    const res = await ACtl.saveFile(
+      IME_USER_ADDED_BACKUP_PATH,
+      JSON.stringify({
+        codes: [],
+        words: [],
+        hans: [],
+      }),
+    )
 
-//     const index = store.index("code")
-//     const eq = index.getAll(searchPrefix)
-//     eq.onsuccess = () => {
-//       const eqs: ZhCode[] = eq.result
-//       const req = index.getAll(range)
-//       req.onsuccess = () => {
-//         const codes: ZhCode[] = req.result
-//         resolve(
-//           [eqs, codes].map(zs => zs.filter(z => z.schema === schema)) as [
-//             ZhCode[],
-//             ZhCode[],
-//           ],
-//         )
-//       }
-//       req.onerror = () => reject(req.error)
-//     }
-//   })
-// }
+    if (res) {
+      showToast(`${res}に新しく作成しました。もう一度試してください`)
+      return
+    } else {
+      showToast(
+        `初期化できませんでした。${IME_USER_ADDED_BACKUP_PATH}を作成してください`,
+      )
+    }
+  })
+
+  const db = await openDB()
+
+  const words = await new Promise<ZhWord[]>((resolve, reject) => {
+    const tx = db.transaction(STORE_WORD, "readonly")
+    const store = tx.objectStore(STORE_WORD)
+    const user = store.index("user")
+    const req = user.getAll(IDBKeyRange.only(true))
+    req.onsuccess = () => resolve(req.result as ZhWord[])
+    req.onerror = () => reject(req.error)
+  })
+
+  const codes = await new Promise<ZhCode[]>((resolve, reject) => {
+    const tx = db.transaction(STORE_CODE, "readonly")
+    const store = tx.objectStore(STORE_CODE)
+    const user = store.index("user")
+    const req = user.getAll(IDBKeyRange.only(true))
+    req.onsuccess = () => resolve(req.result)
+    req.onerror = () => reject(req.error)
+  })
+
+  const hans = await new Promise<Hanzi[]>((resolve, reject) => {
+    const tx = db.transaction(STORE_HANZI, "readonly")
+    const store = tx.objectStore(STORE_HANZI)
+    const user = store.index("user")
+    const req = user.getAll(IDBKeyRange.only(true))
+    req.onsuccess = () => resolve(req.result)
+    req.onerror = () => reject(req.error)
+  })
+
+  console.log({
+    backup,
+    hans,
+    codes,
+    words,
+  })
+
+  backup.codes = mergeObjects([...backup.codes, ...codes], [...CODE_KEYPATH])
+  backup.words = mergeObjects([...backup.words, ...words], [...CODE_KEYPATH])
+  backup.hans = mergeObjects([...backup.hans, ...hans], ["zh"])
+
+  console.log("merged: ", backup)
+
+  const res = await ACtl.saveFile(
+    IME_USER_ADDED_BACKUP_PATH,
+    JSON.stringify(backup),
+  )
+
+  const msg = res
+    ? `保存成功 (${backup.words.length}語 ${backup.codes.length}字 ${backup.hans.length}漢字) ${res}`
+    : `保存失敗！ ${IME_USER_ADDED_BACKUP_PATH}`
+
+  showToast(msg)
+}
 
 export async function getZhCode(
   schema: Schema,
@@ -226,7 +280,10 @@ export async function getZhCode(
       )
       req.onsuccess = () => {
         const codes: ZhCode[] = req.result
-        resolve([eqs, codes] as [ZhCode[], ZhCode[]])
+        resolve([eqs.filter(c => c.on), codes.filter(c => c.on)] as [
+          ZhCode[],
+          ZhCode[],
+        ])
       }
       req.onerror = () => reject(req.error)
     }
@@ -259,7 +316,10 @@ export async function getZhWord(
       )
       req.onsuccess = () => {
         const codes: ZhWord[] = req.result
-        resolve([eqs, codes] as [ZhWord[], ZhWord[]])
+        resolve([eqs.filter(c => c.on), codes.filter(c => c.on)] as [
+          ZhWord[],
+          ZhWord[],
+        ])
       }
       req.onerror = () => reject(req.error)
     }
@@ -409,6 +469,44 @@ export async function getHans(hans: string): Promise<Hanzi[]> {
 export async function zaoci(schema: Schema, zh: string) {
   const hans = await getHans(zh)
 
+  if (schema === "cqkm" || schema === "cqkmxy") {
+    const hs = hans.map(toCqkm).filter(Boolean) as Cqkm[]
+    if (hs.length === 0) return
+
+    const w: ZhWord = {
+      code: "",
+      hans: hs,
+      nth: 0,
+      schema,
+      zh,
+      date: new Date(),
+      on: true,
+      user: true,
+    }
+
+    if (hs.length === 1) {
+      w.code = hs[0].cqkmInitial + hs[0].cqkmForm
+    } else if (schema === "cqkm") {
+      const hans = hs.length < 5 ? hs : [...hs.slice(0, 4), hs[hs.length - 1]]
+      w.code = hans.map(h => h.cqkmInitial + h.cqkmForm[0]).join("")
+    } else if (schema === "cqkmxy") {
+      const hans = hs.length < 5 ? hs : [...hs.slice(0, 4), hs[hs.length - 1]]
+      w.code =
+        hans.map(h => h.cqkmForm.slice(0, 2)).join("") +
+        hans.map(h => h.cqkmInitial).join("")
+    }
+
+    if (w.code.length)
+      return {
+        word: w,
+        hans,
+      }
+  }
+}
+
+export async function __zaoci(schema: Schema, zh: string) {
+  const hans = await getHans(zh)
+
   if (schema === "cqkm") {
     const hs = hans.map(toCqkm).filter(Boolean) as Cqkm[]
 
@@ -479,6 +577,7 @@ export async function zaoci(schema: Schema, zh: string) {
 export interface Cand {
   text: string
   code: string
+  suffix?: string
   v: CandVar
 }
 
@@ -496,12 +595,13 @@ const fromZhWord = (z: ZhWord): Cand => ({
   v: { type: "zhword", v: z },
 })
 
-interface ImeConfig {
-  // keys: KeyConfig
-  // schema: Record<Schema, SchemaConfig>
+// interface ImeConfig {
+//   // keys: KeyConfig
+//   // schema: Record<Schema, SchemaConfig>
 
-  cqkmFormLayout?: CodeMapToBase
-}
+//   cqkmFormLayout?: CodeMapToBase
+//   cqkmInitialLayout?: CodeMapToBase
+// }
 
 type CodeMapToBase = Map<string, string> // 受け取った入力 > 元のcodeに変換
 
@@ -525,13 +625,51 @@ interface SchemaConfig {
   }
 }
 
-// let config: ImeConfig = {
-//   cqkmFormLayout: [],
+const config = {
+  cqkmFormLayout: new Map(
+    `
+      wa em rp tn     yb uy ih og
+      sd dk fi gc     hv ju kj lf
+      zq xr cw .e  bt ,x mo nl vs
+    `
+      .split(/\s+/)
+      .flatMap(s => (s.length === 2 ? [s.split("") as [string, string]] : [])),
+  ),
+  cqkmInitialLayout: new Map(
+    `
+      wp eb rf tm    yy ux ij oq
+      st dd fl gn    hr ju ki lo
+      zk xg ch .a be ,w ms nz vc
+  `
+      .split(/\s+/)
+      .flatMap(s => (s.length === 2 ? [s.split("") as [string, string]] : [])),
+  ),
+}
+
+// const toOriginalSpell = (layout: CodeMapToBase, customed: string): string =>
+//   customed
+//     .split("")
+//     .map(c => layout.get(c))
+//     .join("")
+
+// const toCustomedSpell = (layout: CodeMapToBase, original: string) => {
+//   const m = new Map([...layout].map(([c, o]) => [o, c]))
+//   return original
+//     .split("")
+//     .map(o => m.get(o))
+//     .join("")
+// }
+
+// const toCustomedSpellCqkm = (original: string) => {
+//   toCustomedSpell(config.cqkmInitialLayout, original.slice(0, 1)) +
+//     toCustomedSpell(config.cqkmFormLayout, original.slice(1))
 // }
 
 interface ImeState {
   active: boolean
   candidates: Cand[]
+  suffixStart: number | null
+  lastRemained: boolean
   cache: {
     codes: ZhCode[]
   }
@@ -548,6 +686,8 @@ interface ImeState {
 
 const state: ImeState = {
   active: true,
+  suffixStart: null,
+  lastRemained: true,
   schema: "cqkm",
   cache: {
     codes: [],
@@ -594,7 +734,7 @@ class InlineSuggestPopup {
     selectedIndex: number,
     // _optionNumbers: number,
   ) {
-    console.log("coords", coords)
+    // console.log("coords", coords)
     if (state.candidates.length === 0) {
       this.hide()
       return
@@ -678,11 +818,15 @@ class InlineSuggestPopup {
       })
     }
 
+    const bufferText = state.suffixStart
+      ? `${state.buffer.slice(0, state.suffixStart)})${state.buffer.slice(state.suffixStart)}`
+      : state.buffer
+
     this.el.innerHTML = [
       candidateTip(
         {
           code: "",
-          text: state.buffer,
+          text: bufferText,
           v: {
             type: "zhcode",
             v: {
@@ -741,7 +885,7 @@ export const launchIME = async () => {
     if (state.schema === "hiragana") {
       const k = kana(committedChord)
       if (k) {
-        setText(k, state.startPos, state.endPos, "end")
+        setText(k)
         return
       }
       if (
@@ -750,7 +894,7 @@ export const launchIME = async () => {
           .join("")
           .includes(committedChord[0])
       ) {
-        setText(committedChord[0], state.startPos, state.endPos, "end")
+        setText(committedChord[0])
       }
       return
     }
@@ -758,7 +902,7 @@ export const launchIME = async () => {
     if (state.schema === "katakana") {
       const k = katakana(committedChord)
       if (k) {
-        setText(k, state.startPos, state.endPos, "end")
+        setText(k)
         return
       }
       if (
@@ -767,11 +911,14 @@ export const launchIME = async () => {
           .join("")
           .includes(committedChord[0])
       ) {
-        setText(committedChord[0], state.startPos, state.endPos, "end")
+        setText(committedChord[0])
       }
       return
     }
   })
+
+  const cqkmAnotherSchema = (schema: Schema): Schema | null =>
+    schema === "cqkm" ? "cqkmxy" : schema === "cqkmxy" ? "cqkm" : null
 
   const zaociPrompt = async (n: number) => {
     const t = prompt(
@@ -784,11 +931,29 @@ export const launchIME = async () => {
     if (Number.isNaN(i)) {
       const z = await zaoci(state.schema, t)
       const infos = z ? ["", ...z.hans.map(hanziInfo)] : []
-      const msg = [`「${t}」の綴`, ...infos].join("\n")
+      const a = cqkmAnotherSchema(state.schema)
+      let else_code = ""
+      if (a && t.length > 1) {
+        const w = await zaoci(a, t)
+        console.log(a, w)
+        if (w) else_code = w.word.code
+      }
+      const else_msg = else_code.length > 0 ? `(${else_code}: [${a}]) &` : ""
+
+      const msg = [`「${t}」の綴`, ...infos, else_msg].join("\n")
       const code = prompt(msg, z?.word.code)
       if (z && code) {
         z.word.code = code
         putWordsIDB([z.word])
+        if (a && else_code && code === z?.word.code) {
+          putWordsIDB([
+            {
+              ...z.word,
+              schema: a,
+              code: else_code,
+            },
+          ])
+        }
       }
     } else {
       zaociPrompt(i)
@@ -847,7 +1012,7 @@ export const launchIME = async () => {
 
   window.addEventListener(
     "keydown",
-    e => {
+    async e => {
       keyManager.onkeydown(e)
 
       const target = e.target as InputElement
@@ -875,7 +1040,12 @@ export const launchIME = async () => {
         return
       }
 
-      if (e.key === "ArrowLeft" || e.key === "ArrowRight") {
+      if (
+        e.key === "ArrowLeft" ||
+        e.key === "ArrowRight" ||
+        e.key === "Home" ||
+        e.key === "End"
+      ) {
         return
       }
 
@@ -945,8 +1115,63 @@ export const launchIME = async () => {
         setSchema("hiragana")
       }
 
+      if (e.ctrlKey && e.key === "Backspace") {
+        if (isAfterIMEInput(target)) {
+          e.preventDefault()
+          e.stopImmediatePropagation()
+          const n = lastInputText()!.length
+          setText("", state.startPos - n, state.startPos)
+          state.inputHistory = state.inputHistory.slice(-1)
+          return
+        }
+        return
+      }
+
+      if (e.shiftKey && e.key === "Backspace") {
+        if (state.candidates.length > 0) {
+          e.preventDefault()
+          e.stopImmediatePropagation()
+          const select = state.candidates[state.selectedIndex]
+          const ok = confirm(
+            `${select.text}: ${select.code} (${select.v.type}) を非表示にしますか？`,
+          )
+          if (!ok) return
+          if (select.v.type === "zhcode") {
+            await putCodesIDB([
+              {
+                ...select.v.v,
+                on: false,
+              },
+            ])
+          } else if (select.v.type === "zhword") {
+            await putWordsIDB([{ ...select.v.v, on: false }])
+          }
+          state.candidates.splice(state.selectedIndex, 1)
+          renderWidget()
+        }
+      }
+
       if (e.shiftKey || e.altKey || e.ctrlKey || e.metaKey) return
       // 以下は全て単打
+
+      if (e.key === ";") {
+        if (state.buffer.length === 0) {
+          e.preventDefault()
+          e.stopImmediatePropagation()
+          zaociPrompt(2)
+        } else {
+          if (state.schema === "cqkm") {
+            e.preventDefault()
+            e.stopImmediatePropagation()
+            setSchema("cqkmxy")
+          } else if (state.schema === "cqkmxy") {
+            e.preventDefault()
+            e.stopImmediatePropagation()
+            setSchema("cqkm")
+          }
+        }
+        return
+      }
 
       if (e.key === " ") {
         if (state.candidates.length > 0) {
@@ -957,7 +1182,7 @@ export const launchIME = async () => {
         } else {
           e.preventDefault()
           e.stopImmediatePropagation()
-          setSchema("katakana")
+          setSchema("hiragana")
         }
         return
       }
@@ -970,19 +1195,17 @@ export const launchIME = async () => {
         }
         return
       }
+
       if (e.key === "Backspace") {
         if (state.buffer.length > 0) {
           e.preventDefault()
           e.stopImmediatePropagation()
           state.buffer = state.buffer.slice(0, -1)
+          if (state.suffixStart && state.buffer.length <= state.suffixStart) {
+            state.suffixStart = null
+          }
           if (state.buffer.length === 0) setState.resetBuffer()
-          else updateCandidateRender()
-        } else if (isAfterIMEInput(target)) {
-          e.preventDefault()
-          e.stopImmediatePropagation()
-          const n = lastInputText()!.length
-          setText("", state.startPos - n, state.startPos, "end")
-          state.inputHistory = state.inputHistory.slice(-1)
+          else updateCandidateRender(state.lastRemained)
         }
         return
       }
@@ -1019,7 +1242,34 @@ export const launchIME = async () => {
         return
       }
 
-      if (/[a-z]/.test(e.key)) {
+      if (state.schema === "cqkm" || state.schema === "cqkmxy") {
+        const isCodeRange = /[a-z.,]/.test(e.key)
+        if (state.buffer.length === 0) {
+          if (e.key === "q") {
+            e.preventDefault()
+            e.stopImmediatePropagation()
+            setSchema("katakana")
+          } else if (isCodeRange) {
+            e.preventDefault()
+            e.stopImmediatePropagation()
+            state.buffer += e.key
+            updateCandidateRender()
+          }
+        } else {
+          if (e.key === "q") {
+            e.preventDefault()
+            e.stopImmediatePropagation()
+            commit()
+            setText("。")
+          } else if (isCodeRange) {
+            e.preventDefault()
+            e.stopImmediatePropagation()
+            state.buffer += e.key
+            updateCandidateRender()
+          }
+        }
+        return
+      } else if (/[a-z]/.test(e.key)) {
         e.preventDefault()
         e.stopImmediatePropagation()
         state.buffer += e.key
@@ -1047,19 +1297,13 @@ function renderWidget() {
 function commit() {
   if (!state.active || !state.target) return
   const cand = state.candidates[state.selectedIndex]
-
   const coords = getPopupPosition(
     state.target,
     state.startPos,
     "__ac_ime__mirror",
   )
 
-  setText(
-    cand.text,
-    state.startPos,
-    state.endPos,
-    "end", // move caret to insertion end
-  )
+  setText(cand.text)
 
   state.inputHistory = [...state.inputHistory, cand]
 
@@ -1087,12 +1331,18 @@ function commit() {
 
   setState.resetBuffer()
 
-  if (state.schema === "cj5" || state.schema === "cqkm") {
+  if (
+    state.schema === "cj5" ||
+    state.schema === "cqkm" ||
+    state.schema === "cqkmxy"
+  ) {
     const hans = getHans(cand.text)
     coords.top -= coords.lineHeight + 32
     coords.left -= 5
 
-    hans.then(hans => showToastAt(hans.map(hanziInfo).join("  "), coords, 3000))
+    hans.then(hans =>
+      showToastAt(hans.map(hanziInfo).join("  "), coords, 3000, 299999),
+    )
   }
 }
 
@@ -1111,6 +1361,7 @@ const setState = {
     state.buffer = ""
     state.candidates = []
     state.selectedIndex = 0
+    state.suffixStart = null
     inlinePopup.hide()
   },
 }
@@ -1134,14 +1385,14 @@ const isAfterIMEInput = (target: InputElement) => {
   return target.value.slice(0, state.startPos).endsWith(last)
 }
 
-function setText(
-  text: string,
-  start: number,
-  end: number,
-  mode: SelectionMode,
-) {
+function setText(text: string, start?: number, end?: number) {
   if (!state.target) return
-  state.target.setRangeText(text, start, end, mode)
+  state.target.setRangeText(
+    text,
+    start ?? state.startPos,
+    end ?? state.endPos,
+    "end",
+  )
   state.target.dispatchEvent(new Event("input", { bubbles: true }))
   state.startPos = state.target.selectionStart ?? 0
   state.endPos = state.target.selectionEnd ?? 0
@@ -1158,24 +1409,21 @@ function setSchema(schema: Schema) {
           ? "カタカナ"
           : state.schema === "cqkm"
             ? "超强快码"
-            : state.schema === "cj5"
-              ? "倉頡五代"
-              : state.schema
+            : state.schema === "cqkmxy"
+              ? "超强快码形音"
+              : state.schema === "cj5"
+                ? "倉頡五代"
+                : state.schema
     }`,
   )
+
+  updateCandidateRender()
 }
 
 const lastZhSchema = () =>
   state.schemaHistory.findLast(s => s !== "hiragana" && s !== "katakana")
 
-async function updateCandidateRender() {
-  // const exact = state.cache.codes.filter(
-  //   z => z.schema === state.schema && z.code === state.buffer,
-  // )
-  // const prefixed = state.cache.codes
-  //   .filter(z => z.schema === state.schema && z.code.startsWith(state.buffer))
-  //   .slice(exact.length)
-
+async function prefixSearch() {
   const [matchz, nextz] = await getZhCode(
     // STORE_CODE,
     state.schema,
@@ -1192,16 +1440,128 @@ async function updateCandidateRender() {
   //   ? ([a.code, b.code].sort()[0] === a.code ? -1 : 1)
   //   : a.code.length - b.code.length)
 
-  state.candidates = [
+  const cands = [
     ...matchz.map(fromZhCode),
     ...matchw.map(fromZhWord),
     ...nextz.map(fromZhCode),
     ...nextw.map(fromZhWord),
   ]
 
+  return cands
+}
+
+async function updateCandidateRender(resetSuffixes = false) {
+  if (state.buffer.length === 0) return
+  // const exact = state.cache.codes.filter(
+  //   z => z.schema === state.schema && z.code === state.buffer,
+  // )
+  // const prefixed = state.cache.codes
+  //   .filter(z => z.schema === state.schema && z.code.startsWith(state.buffer))
+  //   .slice(exact.length)
+
+  if (state.suffixStart && !resetSuffixes) {
+    const bufferSuffix = state.buffer.slice(state.suffixStart)
+    const filtered: Cand[] = []
+    let index = 0
+    state.candidates.forEach(cand => {
+      if (cand?.suffix) {
+        if (cand?.suffix.startsWith(bufferSuffix)) filtered.push(cand)
+        index++
+      }
+    })
+    const searched =
+      index < state.candidates.length - 1 ? await prefixSearch() : []
+    state.candidates = suffixForSameCodeCandidates([...filtered, ...searched])
+  } else {
+    const cands = await prefixSearch()
+    state.candidates = suffixForSameCodeCandidates(cands)
+    state.lastRemained = true
+  }
+
+  console.log("state.candidates", state.candidates)
   state.selectedIndex = 0
   if (state.candidates.length === 0) {
     setState.resetBuffer()
-  } else if (state.candidates.length === 1) commit()
-  else renderWidget()
+  } else if (state.candidates.length === 1) {
+    commit()
+  } else renderWidget()
+}
+
+const suffixForSameCodeCandidates = (cands: Cand[]) => {
+  // let lastCode: string | undefined
+  const needSuffix: Cand[] = []
+  const suffixed: Cand[] = []
+  const remained: Cand[] = []
+  for (const c of cands) {
+    if (c.code.length + (c?.suffix?.length ?? 0) === state.buffer.length) {
+      needSuffix.push(c)
+    } else if (c.suffix) suffixed.push(c)
+    else remained.push(c)
+  }
+
+  state.lastRemained = remained.length > 0
+
+  // const sameCodes = []
+  // for (const c of cands) {
+  //   const code = c.suffix ? c.suffix : c.code.slice(state.buffer.length - 1)
+  //   if (lastCode ? lastCode === code : true) {
+  //     sameCodes.push(c)
+  //     lastCode = code
+  //   } else break
+  // }
+  // console.log("sameCodes", sameCodes)
+
+  if (needSuffix.length < 2) {
+    if (suffixed.length === 0) state.suffixStart = null
+    return cands
+  } else {
+    const isFirstSuffix = state.suffixStart === null
+    if (state.suffixStart) {
+      state.suffixStart +=
+        suffixed.length > 0 ? (suffixed[0].suffix?.length ?? 0) : 1
+    } else {
+      state.suffixStart = state.buffer.length
+    }
+
+    const suffixes = getSuffixes(
+      state.buffer,
+      remained,
+      needSuffix.length - 1,
+    ).reverse()
+
+    console.log({
+      suffixStart: state.suffixStart,
+      needSuffix,
+      suffixed,
+      remained,
+      suffixes,
+    })
+    const newSuffixed = needSuffix.map((cand, i) => {
+      const suffix =
+        i === 0
+          ? cand.v.type === "zhword" && isFirstSuffix
+            ? state.schema === "cqkm"
+              ? cand.v.v.hans.map(h => h.cqkmForm.slice(2)).join("")
+              : state.schema === "cqkmxy"
+                ? cand.v.v.hans.map(h => h.cqkmForm.slice(3)).join("")
+                : suffixes.pop()
+            : ""
+          : cand.v.type === "zhcode"
+            ? suffixes.pop()
+            : isFirstSuffix
+              ? state.schema === "cqkm"
+                ? cand.v.v.hans.map(h => h.cqkmForm.slice(2)).join("")
+                : state.schema === "cqkmxy"
+                  ? cand.v.v.hans.map(h => h.cqkmForm.slice(3)).join("")
+                  : suffixes.pop()
+              : suffixes.pop()
+
+      return {
+        ...cand,
+        suffix,
+      }
+    })
+
+    return [...newSuffixed, ...remained]
+  }
 }
