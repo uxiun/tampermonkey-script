@@ -5,6 +5,7 @@ import { Key, KeyManager, Single } from "@/pure/key"
 import { showToast, showToastAt } from "@/pure/component"
 import { kana, KANA_TABLE, katakana } from "@/pure/table"
 import { getSuffixes } from "./keys"
+import { onTabLoadIME } from "./ime-add-listener"
 
 const DB_NAME = "ac_ime_db"
 const DB_VERSION = 2
@@ -84,7 +85,7 @@ export interface ZhWord {
   user: boolean // user added or not
 }
 
-type Schema = "cj5" | "cqkm" | "cqkmxy" | "hiragana" | "katakana"
+export type Schema = "cj5" | "cqkm" | "cqkmxy" | "hiragana" | "katakana"
 
 type SyncMessage<T> = { type: "updated" | "deleted"; items: T[] }
 
@@ -507,12 +508,33 @@ export async function getHans(hans: string): Promise<Hanzi[]> {
 //   r.onerror = () =>
 // }
 
-export async function zaoci(schema: Schema, zh: string) {
+// type ExceptionOption = "prompt" | "skip" | "ignore_continue"
+
+export async function zaoci(
+  schema: Schema,
+  zh: string,
+  // exceptionOption: ExceptionOption = "skip",
+) {
   const hans = await getHans(zh)
 
   if (schema === "cqkm" || schema === "cqkmxy") {
     const hs = hans.map(toCqkm).filter(Boolean) as Cqkm[]
     if (hs.length === 0) return
+
+    // let exceptionSkip = true
+    if (hs.length !== zh.length) {
+      console.log("取得できた漢字数と文字列の長さが一致しません")
+      console.log({
+        zh,
+        hans,
+        hs,
+      })
+
+      // if (exceptionOption === "prompt")
+      //   exceptionSkip = prompt(
+      //     `cqkmForm, cqkmInitials を持つ漢字数と文字列の長さが一致しません（取得: ${hs.map(h => h.zh).join()}） それでも追加しますか？`,
+      //   )
+    }
 
     const w: ZhWord = {
       code: "",
@@ -528,10 +550,11 @@ export async function zaoci(schema: Schema, zh: string) {
     if (hs.length === 1) {
       w.code = hs[0].cqkmInitial + hs[0].cqkmForm
     } else if (schema === "cqkm") {
-      const hans = hs.length < 5 ? hs : [...hs.slice(0, 4), hs[hs.length - 1]]
+      const hans = hs.length > 4 ? [...hs.slice(0, 4), hs[hs.length - 1]] : hs
       w.code = hans.map(h => h.cqkmInitial + h.cqkmForm[0]).join("")
     } else if (schema === "cqkmxy") {
-      const hans = hs.length < 5 ? hs : [...hs.slice(0, 4), hs[hs.length - 1]]
+      const hans = hs.length > 4 ? [...hs.slice(0, 4), hs[hs.length - 1]] : hs
+
       w.code =
         hans.map(h => h.cqkmForm.slice(0, 2)).join("") +
         hans.map(h => h.cqkmInitial).join("")
@@ -541,6 +564,7 @@ export async function zaoci(schema: Schema, zh: string) {
       return {
         word: w,
         hans,
+        hs,
       }
   }
 }
@@ -615,6 +639,69 @@ export async function __zaoci(schema: Schema, zh: string) {
   }
 }
 
+export const multiZaociPrompt = () => {
+  const isUser = confirm("これから登録する単語を手動追加分として記録しますか？")
+  const text = prompt(
+    "登録したい単語を貼り付けて（漢字熟語を正規表現で抽出します）",
+  )
+  if (!text) return
+  const hansSeps = text.match(/[々〆〇〻㐂-頻]+/g)
+  if (!hansSeps) return
+  const words = hansSeps.filter(w => w.length >= 2)
+
+  showToast(`${words.length}単語追加します…`)
+  multiZaoci(words, isUser)
+  showToast(`${words.length}単語を追加しました`)
+}
+
+export const importWordsJSONArray = async () => {
+  const isUser = confirm("これから登録する単語を手動追加分として記録しますか？")
+  const url = prompt("漢字熟語一覧 json URL (string[])")
+  if (!url) return
+  const res = await fetch(new Request(url))
+
+  const words: string[] = await res.json()
+  showToast(`${words.length}単語追加します…`)
+  multiZaoci(words, isUser)
+  showToast(`${words.length}単語を追加しました`)
+}
+
+export const multiZaoci = async (words: string[], user: boolean) => {
+  let zhwords: ZhWord[] = []
+
+  // for (const s of spells.slice(0, 20)) {
+  //   const w = await zaoci("cqkm", s.zh)
+  //   console.log("word", w)
+  // }
+
+  let i = 1
+  for (const word of words) {
+    const w = await zaoci("cqkm", word)
+    const x = await zaoci("cqkmxy", word)
+
+    if (w)
+      zhwords.push({
+        ...w.word,
+        user,
+      })
+    if (x)
+      zhwords.push({
+        ...x.word,
+        user,
+      })
+    if (zhwords.length % 1000 === 0) {
+      console.log(`${(i - 1) * 1000}件～${i * 1000}件`, zhwords)
+      i++
+      zhwords.forEach(w => state.cache.updateWord(w))
+      zhwords = []
+    }
+  }
+
+  console.log("zhwords:", zhwords)
+  zhwords.forEach(w => state.cache.updateWord(w))
+  console.log("putWordsIDB DONE")
+}
+
 export interface Cand {
   text: string
   code: string
@@ -625,12 +712,15 @@ export interface Cand {
   v: CandVar
 }
 
-type CandVar = { type: "zhcode"; v: ZhCode } | { type: "zhword"; v: ZhWord }
+type CandVar =
+  | { type: "zhcode"; v: ZhCode; hans: Hanzi[] }
+  | { type: "zhword"; v: ZhWord }
+  | { type: "other"; memo?: string }
 
 const fromZhCode = (z: ZhCode): Cand => ({
   code: z.code,
   text: z.zh,
-  v: { type: "zhcode", v: z },
+  v: { type: "zhcode", v: z, hans: state.cache.getHans(z.zh) },
 })
 
 const fromZhWord = (z: ZhWord): Cand => ({
@@ -734,7 +824,12 @@ function compareItems<T extends { schema: Schema; code: string; nth: number }>(
   return a.nth - b.nth
 }
 
-class Cache {
+// 1. ソート用比較関数（zh 昇順 -> 必要に応じて nth などで並び替え）
+function compareHans(a: Hanzi, b: Hanzi): number {
+  return a.zh.localeCompare(b.zh)
+}
+
+export class Cache {
   private hans: Hanzi[] = []
   private codes: ZhCode[] = []
   private words: ZhWord[] = []
@@ -749,7 +844,7 @@ class Cache {
     ])
 
     // 初期ロード時に二分探索用のソートを実施
-    this.hans = hans
+    this.hans = hans.sort((a, b) => a.zh.localeCompare(b.zh))
     this.codes = codes.sort(compareItems)
     this.words = words.sort(compareItems)
     this.isLoaded = true
@@ -794,7 +889,7 @@ class Cache {
     const prefixMatchedCodes: ZhCode[] = []
     for (const c of targetCodes) {
       if (c.code === prefix) matchedCodes.push(c)
-      else matchedCodes.push(c) // 抽出範囲内なので c.code.startsWith(prefix) は確定
+      else prefixMatchedCodes.push(c) // 抽出範囲内なので c.code.startsWith(prefix) は確定
     }
 
     const matchedWords: ZhWord[] = []
@@ -804,6 +899,25 @@ class Cache {
       else prefixMatchedWords.push(w)
     }
 
+    prefixMatchedCodes.sort((a, b) =>
+      a.code.length === b.code.length
+        ? a.code.localeCompare(b.code)
+        : a.code.length - b.code.length,
+    )
+
+    prefixMatchedWords.sort((a, b) =>
+      a.code.length === b.code.length
+        ? a.code.localeCompare(b.code)
+        : a.code.length - b.code.length,
+    )
+
+    console.log({
+      matchedCodes,
+      matchedWords,
+      prefixMatchedCodes,
+      prefixMatchedWords,
+    })
+
     // 完全一致 -> 前方一致の順で結合して返却
     return [
       ...matchedCodes.map(fromZhCode),
@@ -811,6 +925,29 @@ class Cache {
       ...prefixMatchedCodes.map(fromZhCode),
       ...prefixMatchedWords.map(fromZhWord),
     ]
+  }
+
+  /**
+   * 指定した漢字（zh）に一致する Hanzi レコード配列を二分探索で取得
+   * @param zh 検索したい漢字 (例: "漢")
+   */
+  getHans(zh: string): Hanzi[] {
+    if (!zh) return []
+
+    // 1. 指定した zh 以上（>= zh）が最初に現れるインデックスを取得
+    const startIndex = binarySearch(
+      this.hans,
+      item => item.zh.localeCompare(zh) >= 0,
+    )
+
+    // 2. 指定した zh より大きい（> zh）が最初に現れるインデックスを取得
+    const endIndex = binarySearch(
+      this.hans,
+      item => item.zh.localeCompare(zh) > 0,
+    )
+
+    // 該当範囲を O(log N) でスライスして返却
+    return this.hans.slice(startIndex, endIndex)
   }
 
   // データ更新時：二分探索で挿入位置を特定して配列のソート状態を維持
@@ -855,6 +992,25 @@ class Cache {
     this.words.splice(insertIdx, 0, word)
   }
 
+  // データ更新時（Hanzi の追加・更新）
+  async updateHanzi(hanzi: Hanzi) {
+    await putIDB([hanzi], STORE_HANZI)
+
+    const existingIdx = this.hans.findIndex(h => h.zh === hanzi.zh)
+
+    if (existingIdx !== -1) {
+      this.hans.splice(existingIdx, 1)
+    }
+
+    // 二分探索で適切な挿入位置を検索
+    const insertIdx = binarySearch(
+      this.hans,
+      item => compareHans(item, hanzi) >= 0,
+    )
+
+    this.hans.splice(insertIdx, 0, hanzi)
+  }
+
   async hideCode(code: ZhCode) {
     await putIDB(
       [
@@ -892,7 +1048,7 @@ class Cache {
   }
 }
 
-interface ImeState {
+export interface ImeState {
   active: boolean
   candidates: Cand[]
   lastRemained: boolean
@@ -908,7 +1064,7 @@ interface ImeState {
   selectedIndexMax: number
 }
 
-const state: ImeState = {
+export const globalImeState: ImeState = {
   active: true,
   lastRemained: true,
   schema: "cqkm",
@@ -924,14 +1080,14 @@ const state: ImeState = {
   selectedIndexMax: 20,
 }
 
+const state = globalImeState
+
 export const getImeState = () => ({ ...state })
 export const initializeCache = () => state.cache.init()
 
 export const isImeCandidateVisible = () => state.candidates.length > 0
 
-type InputElement = HTMLInputElement | HTMLTextAreaElement
-
-class InlineSuggestPopup {
+export class InlineSuggestPopup {
   private el: HTMLDivElement
 
   constructor() {
@@ -1051,31 +1207,36 @@ class InlineSuggestPopup {
         {
           code: "",
           text: state.buffer,
-          v: {
-            type: "zhcode",
-            v: {
-              code: "",
-              nth: 0,
-              schema: state.schema,
-              zh: "",
-              date: new Date(),
-              on: true,
-              user: true,
-            },
-          },
+          v: { type: "other" },
         },
-        "",
         true,
+        state.buffer,
       ),
       ...state.candidates.slice(0, state.selectedIndexMax).map((cand, idx) => {
         const isSelected = idx === selectedIndex
-        return candidateTip(cand, state.buffer, isSelected, {
+
+        return candidateTip(cand, isSelected, state.buffer, {
           fontSize: {
-            code: "15px",
-            fg: "15px",
-            text: "19px",
+            text: "21px",
+            above: "20px",
+            below: "12px",
           },
         })
+
+        // return candidateTip(
+        //   cand.text,
+        //   aboveTexts,
+        //   belowTexts,
+        //   isSelected,
+        //   undefined,
+        //   {
+        //     fontSize: {
+        //       text: "21px",
+        //       above: "20px",
+        //       below: "12px",
+        //     },
+        //   },
+        // )
       }),
     ].join("")
 
@@ -1092,568 +1253,14 @@ class InlineSuggestPopup {
   }
 }
 
-const inlinePopup = new InlineSuggestPopup()
+export const inlinePopup = new InlineSuggestPopup()
 
 export const launchIME = async () => {
   console.log("AutoControl.launchIME")
-  if ((window as any).__ac_ime__) return
-  ;(window as any).__ac_ime__ = true
 
+  state.cache.init()
   console.log("initial IME state", state)
-
-  const keyManager = new KeyManager(40, committedChord => {
-    if (!state.active || !state.target) return
-
-    if (state.schema === "hiragana") {
-      const k = kana(committedChord)
-      if (k) {
-        setText(k)
-        return
-      }
-      if (
-        committedChord.length === 1 &&
-        KANA_TABLE.map(row => row[0])
-          .join("")
-          .includes(committedChord[0])
-      ) {
-        setText(committedChord[0])
-      }
-      return
-    }
-
-    if (state.schema === "katakana") {
-      const k = katakana(committedChord)
-      if (k) {
-        setText(k)
-        return
-      }
-      if (
-        committedChord.length === 1 &&
-        KANA_TABLE.map(row => row[0])
-          .join("")
-          .includes(committedChord[0])
-      ) {
-        setText(committedChord[0])
-      }
-      return
-    }
-  })
-
-  const cqkmAnotherSchema = (schema: Schema): Schema | null =>
-    schema === "cqkm" ? "cqkmxy" : schema === "cqkmxy" ? "cqkm" : null
-
-  const zaociPrompt = async (n: number) => {
-    const t = prompt(
-      "追加したい単語またはその最後のn入力分のn",
-      lastNInputText(n),
-    )
-
-    if (!t) return
-    const i = parseInt(t)
-    if (Number.isNaN(i)) {
-      const z = await zaoci(state.schema, t)
-      const infos = z ? ["", ...z.hans.map(hanziInfo)] : []
-      const a = cqkmAnotherSchema(state.schema)
-      let else_code = ""
-      if (a && t.length > 1) {
-        const w = await zaoci(a, t)
-        console.log(a, w)
-        if (w) else_code = w.word.code
-      }
-      const else_msg = else_code.length > 0 ? `(${else_code}: [${a}]) &` : ""
-
-      const msg = [`「${t}」の綴`, ...infos, else_msg].join("\n")
-      const code = prompt(msg, z?.word.code)
-      if (z && code) {
-        z.word.code = code
-        putWordsIDB([z.word])
-        if (a && else_code && code === z?.word.code) {
-          putWordsIDB([
-            {
-              ...z.word,
-              zh: z.word.zh.replaceAll(/\$space/, " "),
-              schema: a,
-              code: else_code,
-            },
-          ])
-        }
-      }
-    } else {
-      zaociPrompt(i)
-    }
-  }
-
-  window.addEventListener(
-    "keyup",
-    e => {
-      keyManager.onkeyup(e)
-
-      if (!state.active || !isInput()) return
-
-      // if (state.schema === "hiragana") {
-      //   const k = kana(keyManager.chord)
-      //   if (k) {
-      //     e.preventDefault()
-      //     e.stopImmediatePropagation()
-      //     setText(k, state.startPos, state.endPos, "end")
-      //     return
-      //   }
-
-      //   return
-      // }
-
-      // if (state.schema === "katakana") {
-      //   const k = katakana(keyManager.chord)
-      //   if (k) {
-      //     e.preventDefault()
-      //     e.stopImmediatePropagation()
-      //     setText(k, state.startPos, state.endPos, "end")
-      //     return
-      //   }
-      //   return
-      // }
-
-      if (keyManager.isModifierLRPressed.ShiftLeft) {
-        if (state.candidates.length > 0) {
-          const select = state.candidates[state.selectedIndex]
-          if (select.v.type === "zhcode") {
-            showToast("単漢字は編集できません")
-            return
-          }
-          const code = prompt("修正綴", select.code)
-          if (!code) return
-          const word = select.v.v
-          deleteWordsIDB([word])
-          putWordsIDB([{ ...word, code }])
-        } else if (state.buffer.length === 0) {
-          zaociPrompt(2)
-        }
-      }
-    },
-    true,
-  ) // capture phase じゃないと stopPropagation で潰されて届かない
-
-  window.addEventListener(
-    "keydown",
-    async e => {
-      keyManager.onkeydown(e)
-
-      const target = e.target as InputElement
-
-      if (!state.active) {
-        if (isInput() && e.ctrlKey && e.key === "j") {
-          e.preventDefault()
-          e.stopImmediatePropagation()
-          setState.activate()
-          showToast("IME ON")
-          return
-        }
-      }
-
-      if (!state.active || !isInput()) return
-      state.target = target
-      state.startPos = target.selectionStart ?? 0
-      state.endPos = target.selectionEnd ?? 0
-
-      if (e.ctrlKey && e.key === "j") {
-        e.preventDefault()
-        e.stopImmediatePropagation()
-        setState.diactivate()
-        showToast("IME OFF")
-        return
-      }
-
-      if (
-        e.key === "ArrowLeft" ||
-        e.key === "ArrowRight" ||
-        e.key === "Home" ||
-        e.key === "End"
-      ) {
-        return
-      }
-
-      if (state.schema === "hiragana" || state.schema === "katakana") {
-        if (
-          KANA_TABLE.map(row => row[0])
-            .join("")
-            .includes(e.key)
-        ) {
-          e.preventDefault()
-          e.stopImmediatePropagation()
-          keyManager.onkeydownChord(e)
-        }
-      }
-
-      if (state.schema === "hiragana") {
-        if (!e.shiftKey && e.key === " ") {
-          e.preventDefault()
-          e.stopImmediatePropagation()
-          const schema = lastZhSchema() ?? "cqkm"
-          setSchema(schema)
-
-          return
-        }
-
-        return
-      }
-
-      if (state.schema === "katakana") {
-        if (e.shiftKey && e.key === " ") {
-          return
-        }
-
-        if (e.key === " ") {
-          e.preventDefault()
-          e.stopImmediatePropagation()
-          setSchema("hiragana")
-        }
-        return
-      }
-
-      if (e.shiftKey && e.key === " ") {
-        if (state.candidates.length > 0) {
-          e.preventDefault()
-          e.stopImmediatePropagation()
-          const select = state.candidates[state.selectedIndex]
-          if (select.v.type === "zhcode") {
-            showToast("単漢字は編集できません")
-            return
-          }
-          const code = prompt("修正綴", select.code)
-          if (!code) return
-          const word = select.v.v
-          deleteWordsIDB([word])
-          putWordsIDB([{ ...word, code }])
-        } else if (state.buffer.length === 0) {
-          // e.preventDefault()
-          // e.stopImmediatePropagation()
-          // zaociPrompt(2)
-        }
-        return
-      }
-
-      if (e.ctrlKey && (e.key === " " || e.key === "i")) {
-        e.preventDefault()
-        e.stopImmediatePropagation()
-        setSchema("hiragana")
-      }
-
-      if (e.ctrlKey && e.key === "Backspace") {
-        if (isAfterIMEInput(target)) {
-          e.preventDefault()
-          e.stopImmediatePropagation()
-          const n = lastInputText()!.length
-          setText("", state.startPos - n, state.startPos)
-          state.inputHistory = state.inputHistory.slice(-1)
-          return
-        }
-        return
-      }
-
-      if (e.shiftKey && e.key === "Backspace") {
-        if (state.candidates.length > 0) {
-          e.preventDefault()
-          e.stopImmediatePropagation()
-          const select = state.candidates[state.selectedIndex]
-          const ok = confirm(
-            `${select.text}: ${select.code} (${select.v.type}) を非表示にしますか？`,
-          )
-          if (!ok) return
-          if (select.v.type === "zhcode") {
-            state.cache.hideCode(select.v.v)
-
-            // await putCodesIDB([
-            //   {
-            //     ...select.v.v,
-            //     on: false,
-            //   },
-            // ])
-          } else if (select.v.type === "zhword") {
-            state.cache.hideWord(select.v.v)
-            // await putWordsIDB([{ ...select.v.v, on: false }])
-          }
-          state.candidates.splice(state.selectedIndex, 1)
-          renderWidget()
-        }
-      }
-
-      if (e.shiftKey || e.altKey || e.ctrlKey || e.metaKey) return
-      // 以下は全て単打
-
-      if (e.key === ";") {
-        if (state.buffer.length === 0) {
-          e.preventDefault()
-          e.stopImmediatePropagation()
-          zaociPrompt(2)
-        } else {
-          if (state.schema === "cqkm") {
-            e.preventDefault()
-            e.stopImmediatePropagation()
-            setSchema("cqkmxy")
-          } else if (state.schema === "cqkmxy") {
-            e.preventDefault()
-            e.stopImmediatePropagation()
-            setSchema("cqkm")
-          }
-        }
-        return
-      }
-
-      if (e.key === " ") {
-        if (state.candidates.length > 0) {
-          e.preventDefault()
-          e.stopImmediatePropagation()
-          commit()
-          setSchema("hiragana")
-        } else {
-          e.preventDefault()
-          e.stopImmediatePropagation()
-          setSchema("hiragana")
-        }
-        return
-      }
-
-      if (e.key === "Enter") {
-        if (state.candidates.length > 0) {
-          e.preventDefault()
-          e.stopImmediatePropagation()
-          commit()
-        }
-        return
-      }
-
-      if (e.key === "Backspace") {
-        if (state.buffer.length > 0) {
-          e.preventDefault()
-          e.stopImmediatePropagation()
-          state.buffer = state.buffer.slice(0, -1)
-          updateCandidateRender()
-        }
-        return
-      }
-
-      if (e.key === "ArrowDown" || e.key === "ArrowUp") {
-        if (state.candidates.length > 0) {
-          e.preventDefault()
-          e.stopImmediatePropagation()
-          if (e.key === "ArrowDown") {
-            const i = state.selectedIndex + 1
-            state.selectedIndex = i % state.selectedIndexMax
-          }
-          if (e.key === "ArrowUp") {
-            const i = state.selectedIndex - 1
-            state.selectedIndex = i % state.selectedIndexMax
-          }
-          renderWidget()
-        }
-        return
-      }
-
-      if (e.key === "Tab") {
-        if (state.buffer.length > 0) {
-          e.preventDefault()
-          e.stopImmediatePropagation()
-          setState.resetBuffer()
-        }
-        return
-      }
-      if (e.key === "Escape" && state.buffer.length > 0) {
-        e.preventDefault()
-        e.stopImmediatePropagation()
-        setState.resetBuffer()
-        return
-      }
-
-      if (state.schema === "cqkm" || state.schema === "cqkmxy") {
-        const isCodeRange = /[a-z.,]/.test(e.key)
-        if (state.buffer.length === 0) {
-          if (e.key === "q") {
-            e.preventDefault()
-            e.stopImmediatePropagation()
-            setSchema("katakana")
-          } else if (e.key === "p") {
-            e.preventDefault()
-            e.stopImmediatePropagation()
-            setText(" ")
-          } else if (isCodeRange) {
-            e.preventDefault()
-            e.stopImmediatePropagation()
-            state.buffer += e.key
-            updateCandidateRender()
-          }
-        } else {
-          if (e.key === "q") {
-            e.preventDefault()
-            e.stopImmediatePropagation()
-            commit()
-            setText("。")
-          } else if (e.key === "p") {
-            e.preventDefault()
-            e.stopImmediatePropagation()
-            commit()
-            setText("，")
-          } else if (isCodeRange) {
-            e.preventDefault()
-            e.stopImmediatePropagation()
-            state.buffer += e.key
-            updateCandidateRender()
-          }
-        }
-        return
-      } else if (/[a-z]/.test(e.key)) {
-        e.preventDefault()
-        e.stopImmediatePropagation()
-        state.buffer += e.key
-        updateCandidateRender()
-        return
-      }
-    },
-    true,
-  )
 }
-
-function renderWidget() {
-  if (!state.active || !state.target) {
-    inlinePopup.hide()
-    return
-  }
-  const coords = getPopupPosition(
-    state.target,
-    state.startPos,
-    "__ac_ime__mirror",
-  )
-  inlinePopup.show(coords, state.selectedIndex)
-}
-
-function commit() {
-  if (!state.active || !state.target) return
-  const cand = state.candidates[state.selectedIndex]
-  const coords = getPopupPosition(
-    state.target,
-    state.startPos,
-    "__ac_ime__mirror",
-  )
-
-  setText(cand.text)
-
-  state.inputHistory = [...state.inputHistory, cand]
-
-  if (state.selectedIndex > 0) {
-    const i = state.candidates.findIndex(c => c.code === cand.code)
-    const j = state.candidates.findLastIndex(c => c.code === cand.code)
-    if (i < state.selectedIndex) {
-      const cands: Cand[] = state.candidates
-        .slice(i, Math.max(state.selectedIndex, j) + 1)
-        .map((c, i) => {
-          const nth = c.text === cand.text ? 0 : i + 1
-          c.v.v.nth = nth
-          return c
-        })
-
-      for (const c of cands) {
-        if (c.v.type === "zhcode") {
-          state.cache.updateCode(c.v.v)
-          // putCodesIDB([c.v.v])
-        } else if (c.v.type === "zhword") {
-          state.cache.updateWord(c.v.v)
-          // putWordsIDB([c.v.v])
-        }
-      }
-    }
-  }
-
-  setState.resetBuffer()
-
-  if (
-    state.schema === "cj5" ||
-    state.schema === "cqkm" ||
-    state.schema === "cqkmxy"
-  ) {
-    const hans = getHans(cand.text)
-    coords.top -= coords.lineHeight + 32
-    coords.left -= 5
-
-    hans.then(hans =>
-      showToastAt(hans.map(hanziInfo).join("  "), coords, 3000, 299999),
-    )
-  }
-}
-
-const setState = {
-  activate: () => {
-    state.active = true
-    setState.resetBuffer()
-  },
-
-  diactivate: () => {
-    state.active = false
-    setState.resetBuffer()
-  },
-
-  resetBuffer: () => {
-    state.buffer = ""
-    state.candidates = []
-    state.selectedIndex = 0
-    inlinePopup.hide()
-  },
-}
-
-const lastNInputText = (n: number) => {
-  return state.inputHistory
-    .slice(state.inputHistory.length - n)
-    .map(s => (typeof s === "string" ? s : s.text))
-    .join("")
-}
-
-const lastInputText = () => {
-  const last = state.inputHistory[state.inputHistory.length - 1]
-  if (!last) return undefined
-  return typeof last === "string" ? last : last.text
-}
-
-const isAfterIMEInput = (target: InputElement) => {
-  const last = lastInputText()
-  if (!last) return false
-  return target.value.slice(0, state.startPos).endsWith(last)
-}
-
-function setText(text: string, start?: number, end?: number) {
-  if (!state.target) return
-  state.target.setRangeText(
-    text,
-    start ?? state.startPos,
-    end ?? state.endPos,
-    "end",
-  )
-  state.target.dispatchEvent(new Event("input", { bubbles: true }))
-  state.startPos = state.target.selectionStart ?? 0
-  state.endPos = state.target.selectionEnd ?? 0
-}
-
-function setSchema(schema: Schema) {
-  state.schemaHistory.push(state.schema)
-  state.schema = schema
-  showToast(
-    `${
-      state.schema === "hiragana"
-        ? "ひらがな"
-        : state.schema === "katakana"
-          ? "カタカナ"
-          : state.schema === "cqkm"
-            ? "超强快码"
-            : state.schema === "cqkmxy"
-              ? "超强快码形音"
-              : state.schema === "cj5"
-                ? "倉頡五代"
-                : state.schema
-    }`,
-  )
-
-  updateCandidateRender()
-}
-
-const lastZhSchema = () =>
-  state.schemaHistory.findLast(s => s !== "hiragana" && s !== "katakana")
 
 async function prefixSearch() {
   const [matchz, nextz] = await getZhCode(
@@ -1681,85 +1288,6 @@ async function prefixSearch() {
 
   return cands
 }
-
-async function updateCandidateRender() {
-  if (state.buffer.length === 0) {
-    setState.resetBuffer()
-    return
-  }
-  // const exact = state.cache.codes.filter(
-  //   z => z.schema === state.schema && z.code === state.buffer,
-  // )
-  // const prefixed = state.cache.codes
-  //   .filter(z => z.schema === state.schema && z.code.startsWith(state.buffer))
-  //   .slice(exact.length)
-
-  const filtered: Cand[] = []
-  const needSuffix: Cand[] = []
-  const remained: Cand[] = []
-  state.candidates.forEach(cand => {
-    if (cand?.suffix) {
-      const bufferSuffix = state.buffer.slice(cand.suffix.start)
-      const rem = removePrefix(bufferSuffix, cand.suffix.text)
-      if (rem.length === 0) needSuffix.push(cand)
-      else if (rem.length < cand.suffix.text.length) filtered.push(cand)
-      else remained.push(cand)
-    }
-  })
-
-  const searched = state.cache.prefixSearch(state.schema, state.buffer)
-
-  if (needSuffix.length < 2) {
-    state.candidates = [...needSuffix, ...searched]
-  } else {
-    const suffixes = getSuffixes(
-      state.buffer ?? "",
-      [...filtered, ...remained],
-      needSuffix.length - 1,
-    )
-    const suffixed = applySuffixes(needSuffix, suffixes)
-    state.candidates = [...filtered, ...suffixed, ...searched]
-  }
-
-  console.log("state.candidates", state.candidates)
-  state.selectedIndex = 0
-
-  if (state.candidates.length === 0) {
-    setState.resetBuffer()
-  } else if (state.candidates.length === 1) {
-    commit()
-  } else renderWidget()
-}
-
-const applySuffixes = (candidates: Cand[], suffixes: string[]): Cand[] =>
-  candidates.map((cand, i) => {
-    const suffix =
-      i === 0
-        ? cand.v.type === "zhword" && !cand.suffix
-          ? state.schema === "cqkm"
-            ? cand.v.v.hans.map(h => h.cqkmForm.slice(2)).join("")
-            : state.schema === "cqkmxy"
-              ? cand.v.v.hans.map(h => h.cqkmForm.slice(3)).join("")
-              : suffixes.pop()
-          : ""
-        : cand.v.type === "zhcode"
-          ? suffixes.pop()
-          : !cand.suffix
-            ? state.schema === "cqkm"
-              ? cand.v.v.hans.map(h => h.cqkmForm.slice(2)).join("")
-              : state.schema === "cqkmxy"
-                ? cand.v.v.hans.map(h => h.cqkmForm.slice(3)).join("")
-                : suffixes.pop()
-            : suffixes.pop()
-
-    return {
-      ...cand,
-      suffix: {
-        text: suffix ?? "",
-        start: state.buffer.length,
-      },
-    }
-  })
 
 // const suffixForSameCodeCandidates = (cands: Cand[]) => {
 //   // let lastCode: string | undefined

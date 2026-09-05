@@ -30,6 +30,7 @@ import { isImeActive } from "./dlt-ime"
 import {
   backupUserAdded,
   getImeState,
+  importWordsJSONArray,
   initializeCache,
   restoreUserAdded,
 } from "./ime"
@@ -233,12 +234,10 @@ export async function startLinkMemo(option: LinkMemoOption) {
         return
       }
 
-      if (!noModifiers) return
-
       // -------------------------------------------------------------
       // 【絶対最優先】Escape キーの完全乗っ取り
       // -------------------------------------------------------------
-      if (e.key === "Escape") {
+      if (noModifiers && e.key === "Escape") {
         if (appState.isSearching) {
           e.preventDefault()
           e.stopPropagation()
@@ -268,6 +267,8 @@ export async function startLinkMemo(option: LinkMemoOption) {
       // -------------------------------------------------------------
       if (appState.isSearching) {
         if (e.isComposing) return
+
+        if (!noModifiers) return
 
         // 現在のページに表示されている検索結果のサブセットを取得
         const currentItems = getPagedItems(appState)
@@ -403,6 +404,72 @@ export async function startLinkMemo(option: LinkMemoOption) {
       // -------------------------------------------------------------
       // パターンB：右の自動履歴欄に疑似フォーカス中の場合
       // -------------------------------------------------------------
+      if (e.ctrlKey) {
+        switch (e.key) {
+          case "n": {
+            e.preventDefault()
+            e.stopPropagation()
+            // backup
+            const msg = await backupLinks(appState.history)
+            console.log(msg)
+            showToast(msg)
+            break
+          }
+          case "o": {
+            e.preventDefault()
+            e.stopPropagation()
+            // backup
+            const msg = await backupLinks(appState.history)
+            console.log(msg)
+            showToast(msg)
+            break
+          }
+
+          case "p": {
+            e.preventDefault()
+            e.stopPropagation()
+            // get
+            const restored = await restoreLinks(appState.history)
+            console.log("restored links:", restored)
+            appState.history = restored
+            break
+          }
+
+          case "d": {
+            e.preventDefault()
+            e.stopImmediatePropagation()
+            await importWordsJSONArray()
+            break
+          }
+
+          case "s": {
+            e.preventDefault()
+            e.stopImmediatePropagation()
+            await backupUserAdded()
+            break
+          }
+
+          case "q": {
+            e.preventDefault()
+            e.stopImmediatePropagation()
+            await restoreUserAdded()
+            break
+          }
+
+          case "t": {
+            e.preventDefault()
+            e.stopImmediatePropagation()
+            await initializeCache()
+            const state = getImeState()
+            console.log("ImeState", state)
+            showToast(`IME Cache Initilized!`)
+            break
+          }
+        }
+      }
+
+      if (!noModifiers) return
+
       if (e.key >= "0" && e.key <= "9") {
         e.preventDefault()
         e.stopPropagation()
@@ -538,43 +605,6 @@ export async function startLinkMemo(option: LinkMemoOption) {
           const target = currentItems[appState.cursorIndex]
           console.log(target)
           showToast(JSON.stringify(target), 2000)
-          break
-        }
-        case "o": {
-          e.preventDefault()
-          e.stopPropagation()
-          // backup
-          const msg = await backupLinks(appState.history)
-          console.log(msg)
-          showToast(msg)
-          break
-        }
-
-        case "p": {
-          e.preventDefault()
-          e.stopPropagation()
-          // get
-          const restored = await restoreLinks(appState.history)
-          console.log("restored links:", restored)
-          appState.history = restored
-          break
-        }
-
-        case "w": {
-          await backupUserAdded()
-          break
-        }
-
-        case "q": {
-          await restoreUserAdded()
-          break
-        }
-
-        case "t": {
-          await initializeCache()
-          const state = getImeState()
-          console.log("ImeState", state)
-          showToast(`IME Cache Initilized!`)
           break
         }
 

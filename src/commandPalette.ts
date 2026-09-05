@@ -14,6 +14,7 @@ import {
   getHans,
   getZhCode,
   Hanzi,
+  importWordsJSONArray,
   putCodesIDB,
   putHansIDB,
   putWordsIDB,
@@ -149,45 +150,7 @@ async function executeCommand(val: string) {
     }
 
     case "ime zhwords": {
-      const url = prompt("json URL")
-      if (!url) return
-      const res = await fetch(
-        new Request(
-          url,
-          // "https://raw.githubusercontent.com/uxiun/ime-table-convert/main/json/cqkm-word.json",
-        ),
-      )
-
-      const spells: { zh: string; spell: string }[] = await res.json()
-      const words: ZhWord[] = []
-
-      // for (const s of spells.slice(0, 20)) {
-      //   const w = await zaoci("cqkm", s.zh)
-      //   console.log("word", w)
-      // }
-
-      for (const s of spells) {
-        const w = await zaoci("cqkm", s.zh)
-        const x = await zaoci("cqkmxy", s.zh)
-        if (w)
-          words.push({
-            ...w.word,
-            user: false,
-          })
-        if (x)
-          words.push({
-            ...x.word,
-            user: false,
-          })
-        if (words.length % 2000 === 0) {
-          console.log("words:", words)
-        }
-      }
-
-      console.log("words total length:", words.length)
-      putWordsIDB(words)
-      console.log("putWordsIDB DONE")
-
+      importWordsJSONArray()
       break
     }
 
