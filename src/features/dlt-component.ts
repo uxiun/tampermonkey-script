@@ -1,6 +1,7 @@
 import { removePrefix } from "@/pure/utils"
 import { linkIdText, PostLink } from "./dlt-storage"
 import { Cand } from "./ime"
+// import pinyin from "pinyin"
 
 export interface CandidateLinkOption {
   withId: boolean // default: true
@@ -88,6 +89,12 @@ export interface CandidateOption {
 }
 
 const pinyinDisplay = (cand: Cand, isSelected: boolean) => {
+  // const toneNumEnd = pinyin(cand.text, {
+  //   style: "tone2",
+  // }).flat()
+  // const py = pinyin(cand.text).flat()
+  // console.log(py, toneNumEnd)
+
   const hans =
     cand.v.type === "zhcode"
       ? cand.v.hans
@@ -125,6 +132,7 @@ const pinyinDisplay = (cand: Cand, isSelected: boolean) => {
   }
 
   return hans.map(h => pinyinSpan(h.pinyins[0], isSelected))
+  // return toneNumEnd.map(p => pinyinSpan(p, isSelected))
 }
 
 export const candidateTip = (

@@ -18,7 +18,12 @@ async function run() {
     bundle: true,
     outdir: distDir,
     format: "esm",
-    plugins: [tsconfigPathsPlugin()],
+    platform: "browser", // ★1: ブラウザ環境向けであることを明示
+    mainFields: ["browser", "module", "main"], // ★2: package.json の "browser" フィールドを優先
+    define: {
+      "process.env.NODE_ENV": '"production"', // ★3: ライブラリ内の process 参照エラーを防止
+    },
+    // plugins: [tsconfigPathsPlugin()],
   }
 
   if (isWatch) {
