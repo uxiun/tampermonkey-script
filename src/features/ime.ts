@@ -4,14 +4,15 @@ import { getPopupPosition } from "@/pure/dom"
 import { Key, KeyManager, Single } from "@/pure/key"
 import { showToast, showToastAt } from "@/pure/component"
 import { kana, KANA_TABLE, katakana } from "@/pure/table"
-import { dir } from "node:console"
-import { getSuffixes, KEYS } from "./keys"
+import { getSuffixes } from "./keys"
 
 const DB_NAME = "ac_ime_db"
 const DB_VERSION = 2
 export const STORE_HANZI = "hanzi"
 export const STORE_CODE = "zhcode"
 export const STORE_WORD = "zhword"
+
+type ZhStoreName = "hanzi" | "zhcode" | "zhword"
 
 interface AsciiWord {
   word: string
@@ -175,6 +176,38 @@ interface UserAddedBackup {
   hans: Hanzi[]
 }
 
+export async function restoreUserAdded() {
+  const backup: UserAddedBackup = await ACtl.getFile(
+    IME_USER_ADDED_BACKUP_PATH,
+    "json",
+  ).catch(async _err => {
+    const res = await ACtl.saveFile(
+      IME_USER_ADDED_BACKUP_PATH,
+      JSON.stringify({
+        codes: [],
+        words: [],
+        hans: [],
+      }),
+    )
+
+    if (res) {
+      showToast(`${res}に新しく作成しました。もう一度試してください`)
+      return
+    } else {
+      showToast(
+        `初期化できませんでした。${IME_USER_ADDED_BACKUP_PATH}を作成してください`,
+      )
+    }
+  })
+
+  await putHansIDB(backup.hans)
+  await putCodesIDB(backup.codes)
+  await putWordsIDB(backup.words)
+
+  const msg = `復元成功！ (${backup.words.length}語 ${backup.codes.length}字 ${backup.hans.length}漢字) ${IME_USER_ADDED_BACKUP_PATH}`
+
+  showToast(msg)
+}
 export async function backupUserAdded() {
   const backup: UserAddedBackup = await ACtl.getFile(
     IME_USER_ADDED_BACKUP_PATH,
@@ -204,29 +237,18 @@ export async function backupUserAdded() {
   const words = await new Promise<ZhWord[]>((resolve, reject) => {
     const tx = db.transaction(STORE_WORD, "readonly")
     const store = tx.objectStore(STORE_WORD)
-    const user = store.index("user")
-    const req = user.getAll(IDBKeyRange.only(true))
-    req.onsuccess = () => resolve(req.result as ZhWord[])
+    // const user = store.index("user")
+    // const req = user.getAll(IDBKeyRange.bound(true, true))
+
+    const req: IDBRequest<ZhWord[]> = store.getAll()
+
+    req.onsuccess = () => resolve(req.result.filter(w => w.user))
     req.onerror = () => reject(req.error)
   })
 
-  const codes = await new Promise<ZhCode[]>((resolve, reject) => {
-    const tx = db.transaction(STORE_CODE, "readonly")
-    const store = tx.objectStore(STORE_CODE)
-    const user = store.index("user")
-    const req = user.getAll(IDBKeyRange.only(true))
-    req.onsuccess = () => resolve(req.result)
-    req.onerror = () => reject(req.error)
-  })
+  const codes = (await getAllCodesFromIDB()).filter(w => w.user)
 
-  const hans = await new Promise<Hanzi[]>((resolve, reject) => {
-    const tx = db.transaction(STORE_HANZI, "readonly")
-    const store = tx.objectStore(STORE_HANZI)
-    const user = store.index("user")
-    const req = user.getAll(IDBKeyRange.only(true))
-    req.onsuccess = () => resolve(req.result)
-    req.onerror = () => reject(req.error)
-  })
+  const hans = (await getAllHansFromIDB()).filter(w => w.user)
 
   console.log({
     backup,
@@ -323,6 +345,25 @@ export async function getZhWord(
       }
       req.onerror = () => reject(req.error)
     }
+  })
+}
+
+export async function putIDB<T>(items: T[], storeName: string): Promise<void> {
+  if (items.length === 0) return
+  const db = await openDB()
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(storeName, "readwrite")
+    const store = tx.objectStore(storeName)
+
+    items.forEach(item => {
+      store.put(item)
+    })
+
+    tx.oncomplete = () => {
+      resolve()
+    }
+
+    tx.onerror = () => reject(tx.error)
   })
 }
 
@@ -577,7 +618,10 @@ export async function __zaoci(schema: Schema, zh: string) {
 export interface Cand {
   text: string
   code: string
-  suffix?: string
+  suffix?: {
+    text: string
+    start: number
+  }
   v: CandVar
 }
 
@@ -665,14 +709,194 @@ const config = {
 //     toCustomedSpell(config.cqkmFormLayout, original.slice(1))
 // }
 
+// 汎用の二分探索ヘルパー関数（述語 predicate に基づき、条件を満たす最小のインデックスを返す）
+function binarySearch<T>(list: T[], predicate: (item: T) => boolean): number {
+  let low = 0
+  let high = list.length
+  while (low < high) {
+    const mid = (low + high) >>> 1
+    if (predicate(list[mid])) {
+      high = mid
+    } else {
+      low = mid + 1
+    }
+  }
+  return low
+}
+
+// ソート用の比較関数 (schema 優先 -> code 昇順 -> nth 昇順)
+function compareItems<T extends { schema: Schema; code: string; nth: number }>(
+  a: T,
+  b: T,
+): number {
+  if (a.schema !== b.schema) return a.schema.localeCompare(b.schema)
+  if (a.code !== b.code) return a.code.localeCompare(b.code)
+  return a.nth - b.nth
+}
+
+class Cache {
+  private hans: Hanzi[] = []
+  private codes: ZhCode[] = []
+  private words: ZhWord[] = []
+  private isLoaded = false
+
+  async init() {
+    if (this.isLoaded) return
+    const [hans, codes, words] = await Promise.all([
+      getAllFromIDB<Hanzi>(STORE_HANZI),
+      getAllFromIDB<ZhCode>(STORE_CODE),
+      getAllFromIDB<ZhWord>(STORE_WORD),
+    ])
+
+    // 初期ロード時に二分探索用のソートを実施
+    this.hans = hans
+    this.codes = codes.sort(compareItems)
+    this.words = words.sort(compareItems)
+    this.isLoaded = true
+  }
+
+  // 二分探索を使って指定 prefix の開始・終了インデックスの範囲を取得
+  private getPrefixRange<T extends { schema: Schema; code: string }>(
+    list: T[],
+    schema: Schema,
+    prefix: string,
+  ): T[] {
+    // 範囲の開始位置：schema が一致し、かつ code >= prefix となる最初の要素
+    const startIndex = binarySearch(
+      list,
+      item =>
+        item.schema > schema || (item.schema === schema && item.code >= prefix),
+    )
+
+    // 範囲の終了位置を決めるための境界文字列（例: "a" -> "b"）
+    const nextPrefix =
+      prefix.slice(0, -1) +
+      String.fromCharCode(prefix.charCodeAt(prefix.length - 1) + 1)
+
+    const endIndex = binarySearch(
+      list,
+      item =>
+        item.schema > schema ||
+        (item.schema === schema && item.code >= nextPrefix),
+    )
+
+    return list.slice(startIndex, endIndex)
+  }
+
+  prefixSearch(schema: Schema, prefix: string): Cand[] {
+    if (!prefix) return []
+
+    // 1. 二分探索で該当する prefix のアイテム範囲だけを O(log N) で一括抽出
+    const targetCodes = this.getPrefixRange(this.codes, schema, prefix)
+    const targetWords = this.getPrefixRange(this.words, schema, prefix)
+
+    const matchedCodes: ZhCode[] = []
+    const prefixMatchedCodes: ZhCode[] = []
+    for (const c of targetCodes) {
+      if (c.code === prefix) matchedCodes.push(c)
+      else matchedCodes.push(c) // 抽出範囲内なので c.code.startsWith(prefix) は確定
+    }
+
+    const matchedWords: ZhWord[] = []
+    const prefixMatchedWords: ZhWord[] = []
+    for (const w of targetWords) {
+      if (w.code === prefix) matchedWords.push(w)
+      else prefixMatchedWords.push(w)
+    }
+
+    // 完全一致 -> 前方一致の順で結合して返却
+    return [
+      ...matchedCodes.map(fromZhCode),
+      ...matchedWords.map(fromZhWord),
+      ...prefixMatchedCodes.map(fromZhCode),
+      ...prefixMatchedWords.map(fromZhWord),
+    ]
+  }
+
+  // データ更新時：二分探索で挿入位置を特定して配列のソート状態を維持
+  async updateCode(code: ZhCode) {
+    await putIDB([code], STORE_CODE)
+
+    // 既存データのインデックスを特定
+    const existingIdx = this.codes.findIndex(
+      c => c.zh === code.zh && c.code === code.code && c.schema === code.schema,
+    )
+
+    if (existingIdx !== -1) {
+      // 既存の要素を削除（再挿入で順序を保つため）
+      this.codes.splice(existingIdx, 1)
+    }
+
+    // 二分探索で新しい挿入位置（O(log N)）を検索
+    const insertIdx = binarySearch(
+      this.codes,
+      item => compareItems(item, code) >= 0,
+    )
+
+    this.codes.splice(insertIdx, 0, code)
+  }
+
+  async updateWord(word: ZhWord) {
+    await putIDB([word], STORE_WORD)
+
+    const existingIdx = this.words.findIndex(
+      w => w.zh === word.zh && w.code === word.code && w.schema === word.schema,
+    )
+
+    if (existingIdx !== -1) {
+      this.words.splice(existingIdx, 1)
+    }
+
+    const insertIdx = binarySearch(
+      this.words,
+      item => compareItems(item, word) >= 0,
+    )
+
+    this.words.splice(insertIdx, 0, word)
+  }
+
+  async hideCode(code: ZhCode) {
+    await putIDB(
+      [
+        {
+          ...code,
+          on: false,
+        },
+      ],
+      STORE_CODE,
+    )
+
+    const existingIdx = this.codes.findIndex(
+      c => c.zh === code.zh && c.code === code.code && c.schema === code.schema,
+    )
+
+    this.codes.splice(existingIdx, 1)
+  }
+
+  async hideWord(word: ZhWord) {
+    await putIDB(
+      [
+        {
+          ...word,
+          on: false,
+        },
+      ],
+      STORE_WORD,
+    )
+
+    const existingIdx = this.words.findIndex(
+      w => w.zh === word.zh && w.code === word.code && w.schema === word.schema,
+    )
+
+    this.words.splice(existingIdx, 1)
+  }
+}
+
 interface ImeState {
   active: boolean
   candidates: Cand[]
-  suffixStart: number | null
   lastRemained: boolean
-  cache: {
-    codes: ZhCode[]
-  }
+  cache: Cache
   selectedIndex: number
   startPos: number
   endPos: number
@@ -686,12 +910,9 @@ interface ImeState {
 
 const state: ImeState = {
   active: true,
-  suffixStart: null,
   lastRemained: true,
   schema: "cqkm",
-  cache: {
-    codes: [],
-  },
+  cache: new Cache(),
   inputHistory: [],
   buffer: "",
   candidates: [],
@@ -702,6 +923,9 @@ const state: ImeState = {
   schemaHistory: [],
   selectedIndexMax: 20,
 }
+
+export const getImeState = () => ({ ...state })
+export const initializeCache = () => state.cache.init()
 
 export const isImeCandidateVisible = () => state.candidates.length > 0
 
@@ -818,15 +1042,15 @@ class InlineSuggestPopup {
       })
     }
 
-    const bufferText = state.suffixStart
-      ? `${state.buffer.slice(0, state.suffixStart)})${state.buffer.slice(state.suffixStart)}`
-      : state.buffer
+    // const bufferText = state.suffixStart
+    //   ? `${state.buffer.slice(0, state.suffixStart)})${state.buffer.slice(state.suffixStart)}`
+    //   : state.buffer
 
     this.el.innerHTML = [
       candidateTip(
         {
           code: "",
-          text: bufferText,
+          text: state.buffer,
           v: {
             type: "zhcode",
             v: {
@@ -875,8 +1099,6 @@ export const launchIME = async () => {
   if ((window as any).__ac_ime__) return
   ;(window as any).__ac_ime__ = true
 
-  state.cache.codes = await getAllCodesFromIDB()
-  state.cache.codes.sort((a, b) => a.code.localeCompare(b.code))
   console.log("initial IME state", state)
 
   const keyManager = new KeyManager(40, committedChord => {
@@ -949,6 +1171,7 @@ export const launchIME = async () => {
           putWordsIDB([
             {
               ...z.word,
+              zh: z.word.zh.replaceAll(/\$space/, " "),
               schema: a,
               code: else_code,
             },
@@ -1102,9 +1325,9 @@ export const launchIME = async () => {
           deleteWordsIDB([word])
           putWordsIDB([{ ...word, code }])
         } else if (state.buffer.length === 0) {
-          e.preventDefault()
-          e.stopImmediatePropagation()
-          zaociPrompt(2)
+          // e.preventDefault()
+          // e.stopImmediatePropagation()
+          // zaociPrompt(2)
         }
         return
       }
@@ -1137,14 +1360,17 @@ export const launchIME = async () => {
           )
           if (!ok) return
           if (select.v.type === "zhcode") {
-            await putCodesIDB([
-              {
-                ...select.v.v,
-                on: false,
-              },
-            ])
+            state.cache.hideCode(select.v.v)
+
+            // await putCodesIDB([
+            //   {
+            //     ...select.v.v,
+            //     on: false,
+            //   },
+            // ])
           } else if (select.v.type === "zhword") {
-            await putWordsIDB([{ ...select.v.v, on: false }])
+            state.cache.hideWord(select.v.v)
+            // await putWordsIDB([{ ...select.v.v, on: false }])
           }
           state.candidates.splice(state.selectedIndex, 1)
           renderWidget()
@@ -1201,11 +1427,7 @@ export const launchIME = async () => {
           e.preventDefault()
           e.stopImmediatePropagation()
           state.buffer = state.buffer.slice(0, -1)
-          if (state.suffixStart && state.buffer.length <= state.suffixStart) {
-            state.suffixStart = null
-          }
-          if (state.buffer.length === 0) setState.resetBuffer()
-          else updateCandidateRender(state.lastRemained)
+          updateCandidateRender()
         }
         return
       }
@@ -1249,6 +1471,10 @@ export const launchIME = async () => {
             e.preventDefault()
             e.stopImmediatePropagation()
             setSchema("katakana")
+          } else if (e.key === "p") {
+            e.preventDefault()
+            e.stopImmediatePropagation()
+            setText(" ")
           } else if (isCodeRange) {
             e.preventDefault()
             e.stopImmediatePropagation()
@@ -1261,6 +1487,11 @@ export const launchIME = async () => {
             e.stopImmediatePropagation()
             commit()
             setText("。")
+          } else if (e.key === "p") {
+            e.preventDefault()
+            e.stopImmediatePropagation()
+            commit()
+            setText("，")
           } else if (isCodeRange) {
             e.preventDefault()
             e.stopImmediatePropagation()
@@ -1321,9 +1552,11 @@ function commit() {
 
       for (const c of cands) {
         if (c.v.type === "zhcode") {
-          putCodesIDB([c.v.v])
+          state.cache.updateCode(c.v.v)
+          // putCodesIDB([c.v.v])
         } else if (c.v.type === "zhword") {
-          putWordsIDB([c.v.v])
+          state.cache.updateWord(c.v.v)
+          // putWordsIDB([c.v.v])
         }
       }
     }
@@ -1361,7 +1594,6 @@ const setState = {
     state.buffer = ""
     state.candidates = []
     state.selectedIndex = 0
-    state.suffixStart = null
     inlinePopup.hide()
   },
 }
@@ -1450,8 +1682,11 @@ async function prefixSearch() {
   return cands
 }
 
-async function updateCandidateRender(resetSuffixes = false) {
-  if (state.buffer.length === 0) return
+async function updateCandidateRender() {
+  if (state.buffer.length === 0) {
+    setState.resetBuffer()
+    return
+  }
   // const exact = state.cache.codes.filter(
   //   z => z.schema === state.schema && z.code === state.buffer,
   // )
@@ -1459,27 +1694,36 @@ async function updateCandidateRender(resetSuffixes = false) {
   //   .filter(z => z.schema === state.schema && z.code.startsWith(state.buffer))
   //   .slice(exact.length)
 
-  if (state.suffixStart && !resetSuffixes) {
-    const bufferSuffix = state.buffer.slice(state.suffixStart)
-    const filtered: Cand[] = []
-    let index = 0
-    state.candidates.forEach(cand => {
-      if (cand?.suffix) {
-        if (cand?.suffix.startsWith(bufferSuffix)) filtered.push(cand)
-        index++
-      }
-    })
-    const searched =
-      index < state.candidates.length - 1 ? await prefixSearch() : []
-    state.candidates = suffixForSameCodeCandidates([...filtered, ...searched])
+  const filtered: Cand[] = []
+  const needSuffix: Cand[] = []
+  const remained: Cand[] = []
+  state.candidates.forEach(cand => {
+    if (cand?.suffix) {
+      const bufferSuffix = state.buffer.slice(cand.suffix.start)
+      const rem = removePrefix(bufferSuffix, cand.suffix.text)
+      if (rem.length === 0) needSuffix.push(cand)
+      else if (rem.length < cand.suffix.text.length) filtered.push(cand)
+      else remained.push(cand)
+    }
+  })
+
+  const searched = state.cache.prefixSearch(state.schema, state.buffer)
+
+  if (needSuffix.length < 2) {
+    state.candidates = [...needSuffix, ...searched]
   } else {
-    const cands = await prefixSearch()
-    state.candidates = suffixForSameCodeCandidates(cands)
-    state.lastRemained = true
+    const suffixes = getSuffixes(
+      state.buffer ?? "",
+      [...filtered, ...remained],
+      needSuffix.length - 1,
+    )
+    const suffixed = applySuffixes(needSuffix, suffixes)
+    state.candidates = [...filtered, ...suffixed, ...searched]
   }
 
   console.log("state.candidates", state.candidates)
   state.selectedIndex = 0
+
   if (state.candidates.length === 0) {
     setState.resetBuffer()
   } else if (state.candidates.length === 1) {
@@ -1487,81 +1731,116 @@ async function updateCandidateRender(resetSuffixes = false) {
   } else renderWidget()
 }
 
-const suffixForSameCodeCandidates = (cands: Cand[]) => {
-  // let lastCode: string | undefined
-  const needSuffix: Cand[] = []
-  const suffixed: Cand[] = []
-  const remained: Cand[] = []
-  for (const c of cands) {
-    if (c.code.length + (c?.suffix?.length ?? 0) === state.buffer.length) {
-      needSuffix.push(c)
-    } else if (c.suffix) suffixed.push(c)
-    else remained.push(c)
-  }
-
-  state.lastRemained = remained.length > 0
-
-  // const sameCodes = []
-  // for (const c of cands) {
-  //   const code = c.suffix ? c.suffix : c.code.slice(state.buffer.length - 1)
-  //   if (lastCode ? lastCode === code : true) {
-  //     sameCodes.push(c)
-  //     lastCode = code
-  //   } else break
-  // }
-  // console.log("sameCodes", sameCodes)
-
-  if (needSuffix.length < 2) {
-    if (suffixed.length === 0) state.suffixStart = null
-    return cands
-  } else {
-    const isFirstSuffix = state.suffixStart === null
-    if (state.suffixStart) {
-      state.suffixStart +=
-        suffixed.length > 0 ? (suffixed[0].suffix?.length ?? 0) : 1
-    } else {
-      state.suffixStart = state.buffer.length
-    }
-
-    const suffixes = getSuffixes(
-      state.buffer,
-      remained,
-      needSuffix.length - 1,
-    ).reverse()
-
-    console.log({
-      suffixStart: state.suffixStart,
-      needSuffix,
-      suffixed,
-      remained,
-      suffixes,
-    })
-    const newSuffixed = needSuffix.map((cand, i) => {
-      const suffix =
-        i === 0
-          ? cand.v.type === "zhword" && isFirstSuffix
+const applySuffixes = (candidates: Cand[], suffixes: string[]): Cand[] =>
+  candidates.map((cand, i) => {
+    const suffix =
+      i === 0
+        ? cand.v.type === "zhword" && !cand.suffix
+          ? state.schema === "cqkm"
+            ? cand.v.v.hans.map(h => h.cqkmForm.slice(2)).join("")
+            : state.schema === "cqkmxy"
+              ? cand.v.v.hans.map(h => h.cqkmForm.slice(3)).join("")
+              : suffixes.pop()
+          : ""
+        : cand.v.type === "zhcode"
+          ? suffixes.pop()
+          : !cand.suffix
             ? state.schema === "cqkm"
               ? cand.v.v.hans.map(h => h.cqkmForm.slice(2)).join("")
               : state.schema === "cqkmxy"
                 ? cand.v.v.hans.map(h => h.cqkmForm.slice(3)).join("")
                 : suffixes.pop()
-            : ""
-          : cand.v.type === "zhcode"
-            ? suffixes.pop()
-            : isFirstSuffix
-              ? state.schema === "cqkm"
-                ? cand.v.v.hans.map(h => h.cqkmForm.slice(2)).join("")
-                : state.schema === "cqkmxy"
-                  ? cand.v.v.hans.map(h => h.cqkmForm.slice(3)).join("")
-                  : suffixes.pop()
-              : suffixes.pop()
+            : suffixes.pop()
 
-      return {
-        ...cand,
-        suffix,
-      }
-    })
+    return {
+      ...cand,
+      suffix: {
+        text: suffix ?? "",
+        start: state.buffer.length,
+      },
+    }
+  })
 
-    return [...newSuffixed, ...remained]
-  }
-}
+// const suffixForSameCodeCandidates = (cands: Cand[]) => {
+//   // let lastCode: string | undefined
+//   const needSuffix: Cand[] = []
+//   const suffixed: Cand[] = []
+//   const remained: Cand[] = []
+//   for (const c of cands) {
+//     if (
+//       c.suffix !== undefined
+//         ? c.suffix.length === 0
+//         : c.code.length === state.buffers.map(s => s.length).sum()
+//     ) {
+//       needSuffix.push(c)
+//     } else if (c.suffix) suffixed.push(c)
+//     else remained.push(c)
+//   }
+
+//   state.lastRemained = remained.length > 0
+
+//   // const sameCodes = []
+//   // for (const c of cands) {
+//   //   const code = c.suffix ? c.suffix : c.code.slice(state.buffer.length - 1)
+//   //   if (lastCode ? lastCode === code : true) {
+//   //     sameCodes.push(c)
+//   //     lastCode = code
+//   //   } else break
+//   // }
+//   // console.log("sameCodes", sameCodes)
+
+//   if (needSuffix.length < 2) {
+//     if (suffixed.length + needSuffix.length === 0) state.suffixStart = null
+//     return cands
+//   } else {
+//     const isFirstSuffix = state.suffixStart === null
+//     if (state.suffixStart) {
+//       state.suffixStart +=
+//         suffixed.length > 0 ? (suffixed[0].suffix?.length ?? 0) : 1
+//     } else {
+//       state.suffixStart = state.buffer.length
+//     }
+
+//     const suffixes = getSuffixes(
+//       state.buffer,
+//       remained,
+//       needSuffix.length - 1,
+//     ).reverse()
+
+//     console.log({
+//       suffixStart: state.suffixStart,
+//       needSuffix,
+//       suffixed,
+//       remained,
+//       suffixes,
+//     })
+
+//     const newSuffixed = needSuffix.map((cand, i) => {
+//       const suffix =
+//         i === 0
+//           ? cand.v.type === "zhword" && isFirstSuffix
+//             ? state.schema === "cqkm"
+//               ? cand.v.v.hans.map(h => h.cqkmForm.slice(2)).join("")
+//               : state.schema === "cqkmxy"
+//                 ? cand.v.v.hans.map(h => h.cqkmForm.slice(3)).join("")
+//                 : suffixes.pop()
+//             : ""
+//           : cand.v.type === "zhcode"
+//             ? suffixes.pop()
+//             : isFirstSuffix
+//               ? state.schema === "cqkm"
+//                 ? cand.v.v.hans.map(h => h.cqkmForm.slice(2)).join("")
+//                 : state.schema === "cqkmxy"
+//                   ? cand.v.v.hans.map(h => h.cqkmForm.slice(3)).join("")
+//                   : suffixes.pop()
+//               : suffixes.pop()
+
+//       return {
+//         ...cand,
+//         suffix,
+//       }
+//     })
+
+//     return [...newSuffixed, ...remained]
+//   }
+// }

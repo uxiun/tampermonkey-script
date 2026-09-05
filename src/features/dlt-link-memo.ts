@@ -27,7 +27,12 @@ import { candidateLink } from "./dlt-component"
 import { dltShortcuts } from "./dlt-shortcuts"
 import outlinerShortcuts from "./dlt-outliner"
 import { isImeActive } from "./dlt-ime"
-import { backupUserAdded } from "./ime"
+import {
+  backupUserAdded,
+  getImeState,
+  initializeCache,
+  restoreUserAdded,
+} from "./ime"
 
 export interface AppState {
   history: PostLink[]
@@ -535,7 +540,7 @@ export async function startLinkMemo(option: LinkMemoOption) {
           showToast(JSON.stringify(target), 2000)
           break
         }
-        case "b": {
+        case "o": {
           e.preventDefault()
           e.stopPropagation()
           // backup
@@ -545,12 +550,7 @@ export async function startLinkMemo(option: LinkMemoOption) {
           break
         }
 
-        case "u": {
-          await backupUserAdded()
-          break
-        }
-
-        case "y": {
+        case "p": {
           e.preventDefault()
           e.stopPropagation()
           // get
@@ -559,6 +559,25 @@ export async function startLinkMemo(option: LinkMemoOption) {
           appState.history = restored
           break
         }
+
+        case "w": {
+          await backupUserAdded()
+          break
+        }
+
+        case "q": {
+          await restoreUserAdded()
+          break
+        }
+
+        case "t": {
+          await initializeCache()
+          const state = getImeState()
+          console.log("ImeState", state)
+          showToast(`IME Cache Initilized!`)
+          break
+        }
+
         // case "q": {
         //   overwriteBackupLinks(state.history)
         // }
