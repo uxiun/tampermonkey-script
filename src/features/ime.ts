@@ -499,6 +499,7 @@ export async function zaoci(
 
 export const multiZaociPrompt = (
   askIsUser: "ask" | "set user true" | "set user false" = "ask",
+  defaultValue?: string,
 ) => {
   const isUser =
     askIsUser === "ask"
@@ -507,6 +508,7 @@ export const multiZaociPrompt = (
 
   const text = prompt(
     "登録したい単語を貼り付けて（漢字熟語を正規表現で抽出します）",
+    defaultValue,
   )
   if (!text) return
   const hansSeps = text.match(/[々〆〇〻㐂-頻]+/g)

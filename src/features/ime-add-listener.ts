@@ -412,9 +412,21 @@ export const onTabLoadIME = async () => {
         return
       }
       if (e.ctrlKey && e.key === "d") {
-        e.preventDefault()
-        e.stopImmediatePropagation()
-        zaociPrompt(2)
+        if (state.buffer.length === 0) {
+          e.preventDefault()
+          e.stopImmediatePropagation()
+          multiZaociPrompt("set user true", lastNInputText(2))
+        } else {
+          if (state.schema === "cqkm") {
+            e.preventDefault()
+            e.stopImmediatePropagation()
+            setSchema("cqkmxy")
+          } else if (state.schema === "cqkmxy") {
+            e.preventDefault()
+            e.stopImmediatePropagation()
+            setSchema("cqkm")
+          }
+        }
         return
       }
       if (e.ctrlKey && e.shiftKey && e.key === "f") {
@@ -428,21 +440,9 @@ export const onTabLoadIME = async () => {
       // 以下は全て単打
 
       if (e.key === ";") {
-        if (state.buffer.length === 0) {
-          e.preventDefault()
-          e.stopImmediatePropagation()
-          multiZaociPrompt("set user true")
-        } else {
-          if (state.schema === "cqkm") {
-            e.preventDefault()
-            e.stopImmediatePropagation()
-            setSchema("cqkmxy")
-          } else if (state.schema === "cqkmxy") {
-            e.preventDefault()
-            e.stopImmediatePropagation()
-            setSchema("cqkm")
-          }
-        }
+        e.preventDefault()
+        e.stopImmediatePropagation()
+        await zaociPrompt(2)
         return
       }
 
@@ -566,7 +566,7 @@ export const onTabLoadIME = async () => {
   console.log("set keydown listener")
 
   function renderWidget() {
-    if (!state.active || !state.target) {
+    if (!state.active || !state.target || state.candidates.length === 0) {
       inlinePopup.hide()
       return
     }
@@ -787,6 +787,8 @@ export const onTabLoadIME = async () => {
     //   .filter(z => z.schema === state.schema && z.code.startsWith(state.buffer))
     //   .slice(exact.length)
 
+    // const lastCandidates: Cand[] = []
+
     const filtered: Cand[] = []
     const needSuffix: Cand[] = []
     const remained: Cand[] = []
@@ -811,9 +813,10 @@ export const onTabLoadIME = async () => {
       remained,
     })
     const searched = await state.cache.prefixSearch(state.schema, state.buffer)
+    let candidates: Cand[] = []
 
     if (needSuffix.length < 2) {
-      state.candidates = [...filtered, ...needSuffix]
+      candidates = [...filtered, ...needSuffix]
     } else {
       const suffixes = getSuffixes(
         state.buffer ?? "",
@@ -824,22 +827,41 @@ export const onTabLoadIME = async () => {
 
       const suffixed = applySuffixes(needSuffix, suffixes)
       console.log({ suffixed })
-      state.candidates = [...filtered, ...suffixed]
+      candidates = [...filtered, ...suffixed]
     }
 
     for (const c of searched) {
-      if (state.candidates.every(cand => !candIsEqual(cand, c)))
-        state.candidates.push(c)
+      if (candidates.every(cand => !candIsEqual(cand, c))) candidates.push(c)
     }
 
-    console.log("state.candidates", state.candidates)
+    console.log("candidates", candidates)
     state.selectedIndex = 0
 
-    if (state.candidates.length === 0) {
-      setState.resetBuffer()
-    } else if (state.candidates.length === 1) {
+    if (candidates.length === 0) {
+      if (state.candidates.length === 0) {
+        setState.resetBuffer()
+      } else {
+        // 1. 最後の打鍵（最後の1文字）を退避
+        const lastChar = state.buffer.slice(-1)
+
+        // 2. 現在の候補をコミット（※ commit() 内部で resetBuffer されても OK なようにする）
+        commit()
+
+        // 3. 退避しておいた1文字を新しいバッファとしてセット
+        state.buffer = lastChar
+        state.candidates = [] // 古い候補をリセット
+
+        // 4. 新しいバッファで再検索＆レンダリングを再行
+        await updateCandidateRender()
+        return
+      }
+    } else if (candidates.length === 1) {
+      state.candidates = candidates
       commit()
-    } else renderWidget()
+    } else {
+      state.candidates = candidates
+    }
+    renderWidget()
   }
 
   const applySuffixes = (candidates: Cand[], suffixes: string[]): Cand[] =>
