@@ -9,19 +9,13 @@ import {
   migrateLocalStorageToIDB,
 } from "./features/dlt-storage"
 import {
-  getAllCodesFromIDB,
-  getAllHansFromIDB,
-  getHans,
-  getZhCode,
+  getCodesGM,
+  getHansGM,
   Hanzi,
   importWordsJSONArray,
-  putCodesIDB,
-  putHansIDB,
-  putWordsIDB,
-  STORE_CODE,
-  zaoci,
+  putCodesGM,
+  setHansGM,
   ZhCode,
-  ZhWord,
 } from "./features/ime"
 // import { db } from "./features/ime-db"
 
@@ -72,19 +66,6 @@ async function executeCommand(val: string) {
   console.log("実行するコマンド:", val)
 
   switch (val) {
-    case "cqkm": {
-      const code = prompt("code")
-      if (!code) return
-      const zs = await getZhCode("cqkm", code)
-      console.log(zs)
-      break
-    }
-    case "get codes": {
-      const codesStored = await getAllCodesFromIDB()
-      console.log(codesStored)
-      break
-    }
-
     case "ime hanzi": {
       const url = prompt("json URL")
       if (!url) return
@@ -104,8 +85,9 @@ async function executeCommand(val: string) {
         on: true,
         user: false,
       }))
-      putHansIDB(completed)
-      const hansStored = await getAllHansFromIDB()
+
+      setHansGM(completed)
+      const hansStored = await getHansGM()
       console.log("hansStored", hansStored)
       break
     }
@@ -129,8 +111,8 @@ async function executeCommand(val: string) {
       }))
       console.log("codes", codes)
 
-      putCodesIDB(codes)
-      const codesStored = await getAllCodesFromIDB()
+      putCodesGM(codes)
+      const codesStored = await getCodesGM()
       console.log("codesStored", codesStored)
 
       // if (codes.length > codesStored.length) {
@@ -151,14 +133,6 @@ async function executeCommand(val: string) {
 
     case "ime zhwords": {
       importWordsJSONArray()
-      break
-    }
-
-    case "hans": {
-      const text = prompt("漢字を取得したい文字列")
-      if (!text) return
-      const hans = await getHans(text)
-      console.log(hans)
       break
     }
 

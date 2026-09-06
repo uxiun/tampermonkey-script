@@ -1,19 +1,14 @@
-import { isInput, mergeObjects, removePrefix, transpose } from "@/pure/utils"
+import { mergeObjects, transpose } from "@/pure/utils"
 import { candidateTip } from "./dlt-component"
-import { getPopupPosition } from "@/pure/dom"
-import { Key, KeyManager, Single } from "@/pure/key"
-import { showToast, showToastAt } from "@/pure/component"
-import { kana, KANA_TABLE, katakana } from "@/pure/table"
-import { getSuffixes } from "./keys"
-import { onTabLoadIME } from "./ime-add-listener"
+import { Key, Single } from "@/pure/key"
+import { showToast } from "@/pure/component"
+import { saveWordsByPrefix, storage } from "./ime-storage"
 
-const DB_NAME = "ac_ime_db"
-const DB_VERSION = 2
-export const STORE_HANZI = "hanzi"
-export const STORE_CODE = "zhcode"
-export const STORE_WORD = "zhword"
-
-type ZhStoreName = "hanzi" | "zhcode" | "zhword"
+// const DB_NAME = "ac_ime_db"
+// const DB_VERSION = 2
+// export const STORE_HANZI = "hanzi"
+// export const STORE_CODE = "zhcode"
+// export const STORE_WORD = "zhword"
 
 interface AsciiWord {
   word: string
@@ -87,88 +82,131 @@ export interface ZhWord {
 
 export type Schema = "cj5" | "cqkm" | "cqkmxy" | "hiragana" | "katakana"
 
-type SyncMessage<T> = { type: "updated" | "deleted"; items: T[] }
+// type SyncMessage<T> = { type: "updated" | "deleted"; items: T[] }
 
-const syncChannel = new BroadcastChannel("ac_ime_channel")
+// const syncChannel = new BroadcastChannel("ac_ime_channel")
 
-export function openDB(): Promise<IDBDatabase> {
-  return new Promise((resolve, reject) => {
-    const request = indexedDB.open(DB_NAME, DB_VERSION)
+// export function openDB(): Promise<IDBDatabase> {
+//   return new Promise((resolve, reject) => {
+//     const request = indexedDB.open(DB_NAME, DB_VERSION)
 
-    request.onupgradeneeded = _e => {
-      const db = request.result
-      if (!db.objectStoreNames.contains(STORE_HANZI)) {
-        const store = db.createObjectStore(STORE_HANZI, {
-          keyPath: "zh",
-        })
-        store.createIndex("pinyins", "pinyins", {
-          unique: false,
-          multiEntry: true,
-        })
-        store.createIndex("cj5", "cj5", { unique: false, multiEntry: true })
-        store.createIndex("cqkmInitials", "cqkmInitials", {
-          unique: false,
-          multiEntry: true,
-        })
-        store.createIndex("cqkmForm", "cqkmForm", { unique: false })
-        store.createIndex("on", "on")
-        store.createIndex("date", "date")
-        store.createIndex("user", "user")
-      }
+//     request.onupgradeneeded = _e => {
+//       const db = request.result
+//       if (!db.objectStoreNames.contains(STORE_HANZI)) {
+//         const store = db.createObjectStore(STORE_HANZI, {
+//           keyPath: "zh",
+//         })
+//         store.createIndex("pinyins", "pinyins", {
+//           unique: false,
+//           multiEntry: true,
+//         })
+//         store.createIndex("cj5", "cj5", { unique: false, multiEntry: true })
+//         store.createIndex("cqkmInitials", "cqkmInitials", {
+//           unique: false,
+//           multiEntry: true,
+//         })
+//         store.createIndex("cqkmForm", "cqkmForm", { unique: false })
+//         store.createIndex("on", "on")
+//         store.createIndex("date", "date")
+//         store.createIndex("user", "user")
+//       }
 
-      if (!db.objectStoreNames.contains(STORE_CODE)) {
-        const store = db.createObjectStore(STORE_CODE, {
-          keyPath: [...CODE_KEYPATH],
-        })
-        store.createIndex("code", "code")
-        store.createIndex("schema", "schema")
-        store.createIndex("nth", "nth")
-        store.createIndex("on", "on")
-        store.createIndex("date", "date")
-        store.createIndex("user", "user")
-        store.createIndex("codeNth", ["code", "nth"])
-        store.createIndex("schemaCodeNth", ["schema", "code", "nth"])
-        store.createIndex("zh", "zh", { unique: false })
-      }
+//       if (!db.objectStoreNames.contains(STORE_CODE)) {
+//         const store = db.createObjectStore(STORE_CODE, {
+//           keyPath: [...CODE_KEYPATH],
+//         })
+//         store.createIndex("code", "code")
+//         store.createIndex("schema", "schema")
+//         store.createIndex("nth", "nth")
+//         store.createIndex("on", "on")
+//         store.createIndex("date", "date")
+//         store.createIndex("user", "user")
+//         store.createIndex("codeNth", ["code", "nth"])
+//         store.createIndex("schemaCodeNth", ["schema", "code", "nth"])
+//         store.createIndex("zh", "zh", { unique: false })
+//       }
 
-      if (!db.objectStoreNames.contains(STORE_WORD)) {
-        const store = db.createObjectStore(STORE_WORD, {
-          keyPath: [...CODE_KEYPATH],
-        })
-        store.createIndex("code", "code")
-        store.createIndex("schema", "schema")
-        store.createIndex("nth", "nth")
-        store.createIndex("on", "on")
-        store.createIndex("date", "date")
-        store.createIndex("user", "user")
-        store.createIndex("codeNth", ["code", "nth"])
-        store.createIndex("schemaCodeNth", ["schema", "code", "nth"])
-        store.createIndex("zh", "zh", { unique: false })
-      }
-    }
+//       if (!db.objectStoreNames.contains(STORE_WORD)) {
+//         const store = db.createObjectStore(STORE_WORD, {
+//           keyPath: [...CODE_KEYPATH],
+//         })
+//         store.createIndex("code", "code")
+//         store.createIndex("schema", "schema")
+//         store.createIndex("nth", "nth")
+//         store.createIndex("on", "on")
+//         store.createIndex("date", "date")
+//         store.createIndex("user", "user")
+//         store.createIndex("codeNth", ["code", "nth"])
+//         store.createIndex("schemaCodeNth", ["schema", "code", "nth"])
+//         store.createIndex("zh", "zh", { unique: false })
+//       }
+//     }
 
-    request.onsuccess = () => resolve(request.result)
-    request.onerror = () => reject(request.error)
-  })
-}
+//     request.onsuccess = () => resolve(request.result)
+//     request.onerror = () => reject(request.error)
+//   })
+// }
 
-export const getAllHansFromIDB = () => getAllFromIDB<Hanzi>(STORE_HANZI)
-export const getAllCodesFromIDB = () => getAllFromIDB<ZhCode>(STORE_CODE)
+// export const getAllHansFromIDB = () => getAllFromIDB<Hanzi>(STORE_HANZI)
+// export const getAllCodesFromIDB = () => getAllFromIDB<ZhCode>(STORE_CODE)
 
-async function getAllFromIDB<T>(storeName: string): Promise<T[]> {
-  const db = await openDB()
-  return new Promise((resolve, reject) => {
-    const tx = db.transaction(storeName, "readonly")
-    const store = tx.objectStore(storeName)
-    const request = store.getAll()
+// export async function getHansGM() {
+//   return GM_getValue<Hanzi[]>(GM_IME_HANZI)
+// }
+// export async function getCodesGM() {
+//   return GM_getValue<ZhCode[]>(GM_IME_CODES)
+// }
+// export async function getWordsGM() {
+//   return GM_getValue<ZhWord[]>(GM_IME_WORDS)
+// }
 
-    request.onsuccess = () => {
-      const items: T[] = request.result || []
-      resolve(items)
-    }
-    request.onerror = () => reject(request.error)
-  })
-}
+// export async function setHansGM(hans: Hanzi[]) {
+//   GM_setValue(GM_IME_HANZI, hans)
+// }
+// export async function setCodesGM(codes: ZhCode[]) {
+//   GM_setValue(GM_IME_CODES, codes)
+// }
+// export async function setWordsGM(words: ZhWord[]) {
+//   GM_setValue(GM_IME_WORDS, words)
+// }
+
+// export async function putHansGM(hans: Hanzi[]) {
+//   const stored = await getHansGM()
+//   GM_setValue(GM_IME_HANZI, [...stored, ...hans])
+// }
+// export async function putCodesGM(codes: ZhCode[]) {
+//   const stored = await getCodesGM()
+//   GM_setValue(GM_IME_CODES, [...stored, ...codes])
+// }
+// export async function putWordsGM(words: ZhWord[]) {
+//   const stored = await getWordsGM()
+//   GM_setValue(GM_IME_WORDS, [...stored, ...words])
+// }
+
+// export async function putHansGM(hans: Hanzi[]) {
+//   GM_setValue(GM_IME_HANZI, hans)
+// }
+// export async function putCodesGM(codes: ZhCode[]) {
+//   GM_setValue(GM_IME_CODES, codes)
+// }
+// export async function putWordsGM(words: ZhWord[]) {
+//   GM_setValue(GM_IME_WORDS, words)
+// }
+
+// async function getAllFromIDB<T>(storeName: string): Promise<T[]> {
+//   const db = await openDB()
+//   return new Promise((resolve, reject) => {
+//     const tx = db.transaction(storeName, "readonly")
+//     const store = tx.objectStore(storeName)
+//     const request = store.getAll()
+
+//     request.onsuccess = () => {
+//       const items: T[] = request.result || []
+//       resolve(items)
+//     }
+//     request.onerror = () => reject(request.error)
+//   })
+// }
 
 const IME_USER_ADDED_BACKUP_PATH = "<documents>/autocontrol-ime-user-added.json"
 interface UserAddedBackup {
@@ -177,38 +215,39 @@ interface UserAddedBackup {
   hans: Hanzi[]
 }
 
-export async function restoreUserAdded() {
-  const backup: UserAddedBackup = await ACtl.getFile(
-    IME_USER_ADDED_BACKUP_PATH,
-    "json",
-  ).catch(async _err => {
-    const res = await ACtl.saveFile(
-      IME_USER_ADDED_BACKUP_PATH,
-      JSON.stringify({
-        codes: [],
-        words: [],
-        hans: [],
-      }),
-    )
+// export async function restoreUserAdded() {
+//   const backup: UserAddedBackup = await ACtl.getFile(
+//     IME_USER_ADDED_BACKUP_PATH,
+//     "json",
+//   ).catch(async _err => {
+//     const res = await ACtl.saveFile(
+//       IME_USER_ADDED_BACKUP_PATH,
+//       JSON.stringify({
+//         codes: [],
+//         words: [],
+//         hans: [],
+//       }),
+//     )
 
-    if (res) {
-      showToast(`${res}に新しく作成しました。もう一度試してください`)
-      return
-    } else {
-      showToast(
-        `初期化できませんでした。${IME_USER_ADDED_BACKUP_PATH}を作成してください`,
-      )
-    }
-  })
+//     if (res) {
+//       showToast(`${res}に新しく作成しました。もう一度試してください`)
+//       return
+//     } else {
+//       showToast(
+//         `初期化できませんでした。${IME_USER_ADDED_BACKUP_PATH}を作成してください`,
+//       )
+//     }
+//   })
 
-  await putHansIDB(backup.hans)
-  await putCodesIDB(backup.codes)
-  await putWordsIDB(backup.words)
+//   await putHansIDB(backup.hans)
+//   await putCodesIDB(backup.codes)
+//   await putWordsIDB(backup.words)
 
-  const msg = `復元成功！ (${backup.words.length}語 ${backup.codes.length}字 ${backup.hans.length}漢字) ${IME_USER_ADDED_BACKUP_PATH}`
+//   const msg = `復元成功！ (${backup.words.length}語 ${backup.codes.length}字 ${backup.hans.length}漢字) ${IME_USER_ADDED_BACKUP_PATH}`
 
-  showToast(msg)
-}
+//   showToast(msg)
+// }
+
 export async function backupUserAdded() {
   const backup: UserAddedBackup = await ACtl.getFile(
     IME_USER_ADDED_BACKUP_PATH,
@@ -233,33 +272,37 @@ export async function backupUserAdded() {
     }
   })
 
-  const db = await openDB()
+  // const db = await openDB()
 
-  const words = await new Promise<ZhWord[]>((resolve, reject) => {
-    const tx = db.transaction(STORE_WORD, "readonly")
-    const store = tx.objectStore(STORE_WORD)
-    // const user = store.index("user")
-    // const req = user.getAll(IDBKeyRange.bound(true, true))
+  // const words = await new Promise<ZhWord[]>((resolve, reject) => {
+  //   const tx = db.transaction(STORE_WORD, "readonly")
+  //   const store = tx.objectStore(STORE_WORD)
+  //   // const user = store.index("user")
+  //   // const req = user.getAll(IDBKeyRange.bound(true, true))
 
-    const req: IDBRequest<ZhWord[]> = store.getAll()
+  //   const req: IDBRequest<ZhWord[]> = store.getAll()
 
-    req.onsuccess = () => resolve(req.result.filter(w => w.user))
-    req.onerror = () => reject(req.error)
-  })
+  //   req.onsuccess = () => resolve(req.result.filter(w => w.user))
+  //   req.onerror = () => reject(req.error)
+  // })
 
-  const codes = (await getAllCodesFromIDB()).filter(w => w.user)
+  // const codes = (await getAllCodesFromIDB()).filter(w => w.user)
 
-  const hans = (await getAllHansFromIDB()).filter(w => w.user)
+  // const hans = (await getAllHansFromIDB()).filter(w => w.user)
+
+  const hans = await storage.getHans()
+  const codes = await storage.getCodes()
+  // const words = await storage.()
 
   console.log({
     backup,
     hans,
     codes,
-    words,
+    // words,
   })
 
   backup.codes = mergeObjects([...backup.codes, ...codes], [...CODE_KEYPATH])
-  backup.words = mergeObjects([...backup.words, ...words], [...CODE_KEYPATH])
+  // backup.words = mergeObjects([...backup.words, ...words], [...CODE_KEYPATH])
   backup.hans = mergeObjects([...backup.hans, ...hans], ["zh"])
 
   console.log("merged: ", backup)
@@ -276,219 +319,220 @@ export async function backupUserAdded() {
   showToast(msg)
 }
 
-export async function getZhCode(
-  schema: Schema,
-  searchPrefix: string,
-): Promise<[ZhCode[], ZhCode[]]> {
-  const db = await openDB()
+// export async function getZhCode(
+//   schema: Schema,
+//   searchPrefix: string,
+// ): Promise<[ZhCode[], ZhCode[]]> {
+//   const db = await openDB()
 
-  return new Promise((resolve, reject) => {
-    const tx = db.transaction(STORE_CODE, "readonly")
-    const store = tx.objectStore(STORE_CODE)
+//   return new Promise((resolve, reject) => {
+//     const tx = db.transaction(STORE_CODE, "readonly")
+//     const store = tx.objectStore(STORE_CODE)
 
-    const index = store.index("schemaCodeNth")
-    const eq = index.getAll(
-      IDBKeyRange.bound(
-        [schema, searchPrefix, -Infinity],
-        [schema, searchPrefix, Infinity],
-      ),
-    )
-    eq.onsuccess = () => {
-      const eqs: ZhCode[] = eq.result
-      const req = index.getAll(
-        IDBKeyRange.bound(
-          [schema, searchPrefix, Infinity],
-          [schema, searchPrefix + "\uffff", Infinity],
-        ),
-      )
-      req.onsuccess = () => {
-        const codes: ZhCode[] = req.result
-        resolve([eqs.filter(c => c.on), codes.filter(c => c.on)] as [
-          ZhCode[],
-          ZhCode[],
-        ])
-      }
-      req.onerror = () => reject(req.error)
-    }
-  })
-}
-export async function getZhWord(
-  schema: Schema,
-  searchPrefix: string,
-): Promise<[ZhWord[], ZhWord[]]> {
-  const db = await openDB()
+//     const index = store.index("schemaCodeNth")
+//     const eq = index.getAll(
+//       IDBKeyRange.bound(
+//         [schema, searchPrefix, -Infinity],
+//         [schema, searchPrefix, Infinity],
+//       ),
+//     )
+//     eq.onsuccess = () => {
+//       const eqs: ZhCode[] = eq.result
+//       const req = index.getAll(
+//         IDBKeyRange.bound(
+//           [schema, searchPrefix, Infinity],
+//           [schema, searchPrefix + "\uffff", Infinity],
+//         ),
+//       )
+//       req.onsuccess = () => {
+//         const codes: ZhCode[] = req.result
+//         resolve([eqs.filter(c => c.on), codes.filter(c => c.on)] as [
+//           ZhCode[],
+//           ZhCode[],
+//         ])
+//       }
+//       req.onerror = () => reject(req.error)
+//     }
+//   })
+// }
 
-  return new Promise((resolve, reject) => {
-    const tx = db.transaction(STORE_WORD, "readonly")
-    const store = tx.objectStore(STORE_WORD)
+// export async function getZhWord(
+//   schema: Schema,
+//   searchPrefix: string,
+// ): Promise<[ZhWord[], ZhWord[]]> {
+//   const db = await openDB()
 
-    const index = store.index("schemaCodeNth")
-    const eq = index.getAll(
-      IDBKeyRange.bound(
-        [schema, searchPrefix, -Infinity],
-        [schema, searchPrefix, Infinity],
-      ),
-    )
-    eq.onsuccess = () => {
-      const eqs: ZhWord[] = eq.result
-      const req = index.getAll(
-        IDBKeyRange.bound(
-          [schema, searchPrefix, Infinity],
-          [schema, searchPrefix + "\uffff", Infinity],
-        ),
-      )
-      req.onsuccess = () => {
-        const codes: ZhWord[] = req.result
-        resolve([eqs.filter(c => c.on), codes.filter(c => c.on)] as [
-          ZhWord[],
-          ZhWord[],
-        ])
-      }
-      req.onerror = () => reject(req.error)
-    }
-  })
-}
+//   return new Promise((resolve, reject) => {
+//     const tx = db.transaction(STORE_WORD, "readonly")
+//     const store = tx.objectStore(STORE_WORD)
 
-export async function putIDB<T>(items: T[], storeName: string): Promise<void> {
-  if (items.length === 0) return
-  const db = await openDB()
-  return new Promise((resolve, reject) => {
-    const tx = db.transaction(storeName, "readwrite")
-    const store = tx.objectStore(storeName)
+//     const index = store.index("schemaCodeNth")
+//     const eq = index.getAll(
+//       IDBKeyRange.bound(
+//         [schema, searchPrefix, -Infinity],
+//         [schema, searchPrefix, Infinity],
+//       ),
+//     )
+//     eq.onsuccess = () => {
+//       const eqs: ZhWord[] = eq.result
+//       const req = index.getAll(
+//         IDBKeyRange.bound(
+//           [schema, searchPrefix, Infinity],
+//           [schema, searchPrefix + "\uffff", Infinity],
+//         ),
+//       )
+//       req.onsuccess = () => {
+//         const codes: ZhWord[] = req.result
+//         resolve([eqs.filter(c => c.on), codes.filter(c => c.on)] as [
+//           ZhWord[],
+//           ZhWord[],
+//         ])
+//       }
+//       req.onerror = () => reject(req.error)
+//     }
+//   })
+// }
 
-    items.forEach(item => {
-      store.put(item)
-    })
+// export async function putIDB<T>(items: T[], storeName: string): Promise<void> {
+//   if (items.length === 0) return
+//   const db = await openDB()
+//   return new Promise((resolve, reject) => {
+//     const tx = db.transaction(storeName, "readwrite")
+//     const store = tx.objectStore(storeName)
 
-    tx.oncomplete = () => {
-      resolve()
-    }
+//     items.forEach(item => {
+//       store.put(item)
+//     })
 
-    tx.onerror = () => reject(tx.error)
-  })
-}
+//     tx.oncomplete = () => {
+//       resolve()
+//     }
 
-export async function putCodesIDB(codes: ZhCode[]): Promise<void> {
-  if (codes.length === 0) return
-  const db = await openDB()
-  return new Promise((resolve, reject) => {
-    const tx = db.transaction(STORE_CODE, "readwrite")
-    const store = tx.objectStore(STORE_CODE)
+//     tx.onerror = () => reject(tx.error)
+//   })
+// }
 
-    codes.forEach(code => {
-      store.put(code)
-    })
+// export async function putCodesIDB(codes: ZhCode[]): Promise<void> {
+//   if (codes.length === 0) return
+//   const db = await openDB()
+//   return new Promise((resolve, reject) => {
+//     const tx = db.transaction(STORE_CODE, "readwrite")
+//     const store = tx.objectStore(STORE_CODE)
 
-    tx.oncomplete = () => {
-      const msg: SyncMessage<ZhCode> = {
-        type: "updated",
-        items: codes,
-      }
-      syncChannel.postMessage(msg)
-      resolve()
-    }
+//     codes.forEach(code => {
+//       store.put(code)
+//     })
 
-    tx.onerror = () => reject(tx.error)
-  })
-}
+//     tx.oncomplete = () => {
+//       const msg: SyncMessage<ZhCode> = {
+//         type: "updated",
+//         items: codes,
+//       }
+//       syncChannel.postMessage(msg)
+//       resolve()
+//     }
 
-export async function deleteWordsIDB(words: ZhWord[]): Promise<void> {
-  if (words.length === 0) return
-  const db = await openDB()
-  return new Promise((resolve, reject) => {
-    const tx = db.transaction(STORE_WORD, "readwrite")
-    const store = tx.objectStore(STORE_WORD)
+//     tx.onerror = () => reject(tx.error)
+//   })
+// }
 
-    words.forEach(({ zh, code, schema }) => {
-      store.delete([zh, code, schema])
-    })
+// export async function deleteWordsIDB(words: ZhWord[]): Promise<void> {
+//   if (words.length === 0) return
+//   const db = await openDB()
+//   return new Promise((resolve, reject) => {
+//     const tx = db.transaction(STORE_WORD, "readwrite")
+//     const store = tx.objectStore(STORE_WORD)
 
-    tx.oncomplete = () => {
-      const msg: SyncMessage<ZhCode> = {
-        type: "deleted",
-        items: words,
-      }
-      syncChannel.postMessage(msg)
-      resolve()
-    }
+//     words.forEach(({ zh, code, schema }) => {
+//       store.delete([zh, code, schema])
+//     })
 
-    tx.onerror = () => reject(tx.error)
-  })
-}
+//     tx.oncomplete = () => {
+//       const msg: SyncMessage<ZhCode> = {
+//         type: "deleted",
+//         items: words,
+//       }
+//       syncChannel.postMessage(msg)
+//       resolve()
+//     }
 
-export async function putWordsIDB(words: ZhWord[]): Promise<void> {
-  if (words.length === 0) return
-  const db = await openDB()
-  return new Promise((resolve, reject) => {
-    const tx = db.transaction(STORE_WORD, "readwrite")
-    const store = tx.objectStore(STORE_WORD)
+//     tx.onerror = () => reject(tx.error)
+//   })
+// }
 
-    words.forEach(code => {
-      store.put(code)
-    })
+// export async function putWordsIDB(words: ZhWord[]): Promise<void> {
+//   if (words.length === 0) return
+//   const db = await openDB()
+//   return new Promise((resolve, reject) => {
+//     const tx = db.transaction(STORE_WORD, "readwrite")
+//     const store = tx.objectStore(STORE_WORD)
 
-    tx.oncomplete = () => {
-      const msg: SyncMessage<ZhWord> = {
-        type: "updated",
-        items: words,
-      }
-      syncChannel.postMessage(msg)
-      resolve()
-    }
+//     words.forEach(code => {
+//       store.put(code)
+//     })
 
-    tx.onerror = () => reject(tx.error)
-  })
-}
+//     tx.oncomplete = () => {
+//       const msg: SyncMessage<ZhWord> = {
+//         type: "updated",
+//         items: words,
+//       }
+//       syncChannel.postMessage(msg)
+//       resolve()
+//     }
 
-export async function putHansIDB(hans: Hanzi[]): Promise<void> {
-  if (hans.length === 0) return
-  const db = await openDB()
-  return new Promise((resolve, reject) => {
-    const tx = db.transaction(STORE_HANZI, "readwrite")
-    const store = tx.objectStore(STORE_HANZI)
+//     tx.onerror = () => reject(tx.error)
+//   })
+// }
 
-    hans.forEach(han => {
-      store.put(han)
-    })
+// export async function putHansIDB(hans: Hanzi[]): Promise<void> {
+//   if (hans.length === 0) return
+//   const db = await openDB()
+//   return new Promise((resolve, reject) => {
+//     const tx = db.transaction(STORE_HANZI, "readwrite")
+//     const store = tx.objectStore(STORE_HANZI)
 
-    tx.oncomplete = () => {
-      const msg: SyncMessage<Hanzi> = {
-        type: "updated",
-        items: hans,
-      }
-      syncChannel.postMessage(msg)
-      resolve()
-    }
+//     hans.forEach(han => {
+//       store.put(han)
+//     })
 
-    tx.onerror = () => reject(tx.error)
-  })
-}
+//     tx.oncomplete = () => {
+//       const msg: SyncMessage<Hanzi> = {
+//         type: "updated",
+//         items: hans,
+//       }
+//       syncChannel.postMessage(msg)
+//       resolve()
+//     }
 
-export async function getHans(hans: string): Promise<Hanzi[]> {
-  const db = await openDB()
-  const tx = db.transaction(STORE_HANZI, "readonly")
-  const store = tx.objectStore(STORE_HANZI)
+//     tx.onerror = () => reject(tx.error)
+//   })
+// }
 
-  // 1. 各文字の取得処理を Promise に変換する
-  const promises = hans.split("").map(h => {
-    return new Promise<Hanzi | undefined>((resolve, reject) => {
-      const r = store.get(h)
+// export async function getHans(hans: string): Promise<Hanzi[]> {
+//   const db = await openDB()
+//   const tx = db.transaction(STORE_HANZI, "readonly")
+//   const store = tx.objectStore(STORE_HANZI)
 
-      r.onsuccess = () => {
-        // データが存在すれば resolve、なければ undefined（またはお好みの処理）
-        resolve(r.result as Hanzi)
-      }
+//   // 1. 各文字の取得処理を Promise に変換する
+//   const promises = hans.split("").map(h => {
+//     return new Promise<Hanzi | undefined>((resolve, reject) => {
+//       const r = store.get(h)
 
-      r.onerror = () => {
-        console.log(r.error)
-        resolve(undefined)
-      }
-    })
-  })
+//       r.onsuccess = () => {
+//         // データが存在すれば resolve、なければ undefined（またはお好みの処理）
+//         resolve(r.result as Hanzi)
+//       }
 
-  // 2. すべての Promise が完了するのを待って結果を返す
-  return Promise.all(promises).then(hs => hs.filter(h => h !== undefined))
-}
+//       r.onerror = () => {
+//         console.log(r.error)
+//         resolve(undefined)
+//       }
+//     })
+//   })
+
+//   // 2. すべての Promise が完了するのを待って結果を返す
+//   return Promise.all(promises).then(hs => hs.filter(h => h !== undefined))
+// }
 
 // export async function getByZh(zh: string): {codes: ZhCode[] words: ZhWord[] } {
 //   const db = await openDB()
@@ -515,11 +559,14 @@ export async function zaoci(
   zh: string,
   // exceptionOption: ExceptionOption = "skip",
 ) {
-  const hans = await getHans(zh)
-
+  // const hans = await getHans(zh)
+  const hans = state.cache.getHans(zh)
   if (schema === "cqkm" || schema === "cqkmxy") {
     const hs = hans.map(toCqkm).filter(Boolean) as Cqkm[]
-    if (hs.length === 0) return
+    if (hs.length === 0) {
+      console.log("取得できた漢字が0個です")
+      console.log("cache:", state.cache)
+    }
 
     // let exceptionSkip = true
     if (hs.length !== zh.length) {
@@ -569,76 +616,6 @@ export async function zaoci(
   }
 }
 
-export async function __zaoci(schema: Schema, zh: string) {
-  const hans = await getHans(zh)
-
-  if (schema === "cqkm") {
-    const hs = hans.map(toCqkm).filter(Boolean) as Cqkm[]
-
-    const w: ZhWord = {
-      code: "",
-      hans: hs,
-      nth: 0,
-      schema,
-      zh,
-      date: new Date(),
-      on: true,
-      user: true,
-    }
-
-    if (hs.length === 0) {
-      console.log("hs.length 0")
-    } else if (hs.length === 1) {
-      w.code = hs[0].cqkmInitial + hs[0].cqkmForm
-    } else if (hs.length === 2) {
-      w.code = [
-        hs.map(h => h.cqkmInitial + h.cqkmForm[0]),
-        hs.map(h => h.cqkmForm[1]),
-      ]
-        .flat()
-        .join("")
-
-      // const xy = [
-      //   hans.map(h => h.cqkmForm!.slice(0, 2)),
-      //   hans.map(h => h.cqkmInitials[0]),
-      // ]
-      //   .flat()
-      //   .join("")
-    } else if (hs.length === 3) {
-      w.code =
-        hs[0].cqkmInitial +
-        hs[0].cqkmForm[0] +
-        hs[1].cqkmInitial +
-        hs[2].cqkmInitial +
-        hs[1].cqkmForm[1] +
-        hs[2].cqkmForm[1] +
-        hs[1].cqkmForm[2] +
-        hs[2].cqkmForm[2]
-    } else if (hs.length === 4) {
-      w.code = transpose(
-        hs.map(h => [h.cqkmInitial, ...h.cqkmForm.slice(0, 2)]),
-      )
-        .map(k => k.join(""))
-        .join("")
-    } else if (hs.length > 4) {
-      w.code = transpose(
-        [...hs.slice(0, 4), hs[hs.length - 1]].map(h => [
-          h.cqkmInitial,
-          ...h.cqkmForm.slice(0, 2),
-        ]),
-      )
-        .map(k => k.join(""))
-        .join("")
-    }
-
-    if (w.code.length > 0)
-      return {
-        word: w,
-        hans,
-      }
-  }
-}
-
 export const multiZaociPrompt = () => {
   const isUser = confirm("これから登録する単語を手動追加分として記録しますか？")
   const text = prompt(
@@ -661,8 +638,9 @@ export const importWordsJSONArray = async () => {
   const res = await fetch(new Request(url))
 
   const words: string[] = await res.json()
+  if (words.length === 0) return
   showToast(`${words.length}単語追加します…`)
-  multiZaoci(words, isUser)
+  await multiZaoci(words, isUser)
   showToast(`${words.length}単語を追加しました`)
 }
 
@@ -674,7 +652,6 @@ export const multiZaoci = async (words: string[], user: boolean) => {
   //   console.log("word", w)
   // }
 
-  let i = 1
   for (const word of words) {
     const w = await zaoci("cqkm", word)
     const x = await zaoci("cqkmxy", word)
@@ -689,16 +666,11 @@ export const multiZaoci = async (words: string[], user: boolean) => {
         ...x.word,
         user,
       })
-    if (zhwords.length % 1000 === 0) {
-      console.log(`${(i - 1) * 1000}件～${i * 1000}件`, zhwords)
-      i++
-      zhwords.forEach(w => state.cache.updateWord(w))
-      zhwords = []
-    }
   }
 
   console.log("zhwords:", zhwords)
-  zhwords.forEach(w => state.cache.updateWord(w))
+  await saveWordsByPrefix(zhwords)
+  await state.cache.reset("words")
   console.log("putWordsIDB DONE")
 }
 
@@ -799,6 +771,10 @@ const config = {
 //     toCustomedSpell(config.cqkmFormLayout, original.slice(1))
 // }
 
+// const GM_IME_HANZI = "GM_IME_HANZI"
+// const GM_IME_CODES = "GM_IME_CODES"
+// const GM_IME_WORDS = "GM_IME_WORDS"
+
 // 汎用の二分探索ヘルパー関数（述語 predicate に基づき、条件を満たす最小のインデックスを返す）
 function binarySearch<T>(list: T[], predicate: (item: T) => boolean): number {
   let low = 0
@@ -824,32 +800,187 @@ function compareItems<T extends { schema: Schema; code: string; nth: number }>(
   return a.nth - b.nth
 }
 
-// 1. ソート用比較関数（zh 昇順 -> 必要に応じて nth などで並び替え）
+// // 1. ソート用比較関数（zh 昇順 -> 必要に応じて nth などで並び替え）
+// function compareHans(a: Hanzi, b: Hanzi): number {
+//   return a.zh.localeCompare(b.zh)
+// }
+// ソート関数も標準比較に揃える
 function compareHans(a: Hanzi, b: Hanzi): number {
-  return a.zh.localeCompare(b.zh)
+  if (a.zh < b.zh) return -1
+  if (a.zh > b.zh) return 1
+  return 0
 }
+
+export const codewordIsEqual = <T extends ZhWord | ZhCode>(a: T, b: T) =>
+  a.zh === b.zh && a.code === b.code && a.schema === b.schema
 
 export class Cache {
   private hans: Hanzi[] = []
+  private hansMap = new Map<string, Hanzi[]>()
   private codes: ZhCode[] = []
-  private words: ZhWord[] = []
+  // private words: ZhWord[] = []
+  // words 全件ではなく、読み込んだキーだけを保持する Map
+  private loadedWordChunks = new Map<string, ZhWord[]>()
   private isLoaded = false
+
+  debugHans() {
+    console.log({
+      hansLength: this.hans.length,
+      mapSize: this.hansMap.size,
+      sampleHans: this.hans[0],
+      sampleMapKey: this.hansMap.keys().next().value,
+    })
+  }
 
   async init() {
     if (this.isLoaded) return
-    const [hans, codes, words] = await Promise.all([
-      getAllFromIDB<Hanzi>(STORE_HANZI),
-      getAllFromIDB<ZhCode>(STORE_CODE),
-      getAllFromIDB<ZhWord>(STORE_WORD),
-    ])
 
-    // 初期ロード時に二分探索用のソートを実施
+    // const [hans, codes] = await Promise.all([
+    //   storage.getHans(),
+    //   storage.getCodes(),
+    // ])
+
+    const hans = await storage.getHans()
+    const codes = await storage.getCodes()
+
     this.hans = hans.sort((a, b) => a.zh.localeCompare(b.zh))
     this.codes = codes.sort(compareItems)
-    this.words = words.sort(compareItems)
+    // this.words = words.sort(compareItems)
+
+    this.rebuildHansMap()
     this.isLoaded = true
+    console.log("Cache.init()", {
+      hans: this.hans,
+      codes: this.codes,
+      // words: this.words,
+      hansMap: this.hansMap,
+    })
   }
 
+  private rebuildHansMap() {
+    this.hansMap.clear()
+    for (const h of this.hans) {
+      const list = this.hansMap.get(h.zh) ?? []
+      list.push(h)
+      this.hansMap.set(h.zh, list)
+    }
+  }
+
+  async reset(type: ImeStoreValueType) {
+    if (type === "hans") {
+      const hans = await storage.getHans()
+      this.hans = mergeObjects(hans, ["zh"]).sort((a, b) =>
+        a.zh.localeCompare(b.zh),
+      )
+      this.rebuildHansMap()
+      await storage.setHans(this.hans)
+    } else if (type === "codes") {
+      const codes = await storage.getCodes()
+      this.codes = mergeObjects(codes, [...CODE_KEYPATH]).sort(compareItems)
+      await storage.setCodes(this.codes)
+    } else if (type === "words") {
+      // const words = await storage.getWords()
+      // this.words = mergeObjects(words, [...CODE_KEYPATH]).sort(compareItems)
+      // await storage.setWords(this.words)
+      this.loadedWordChunks.clear()
+    }
+  }
+
+  async getWordsByCode(inputCode: string): Promise<ZhWord[]> {
+    if (!inputCode) return []
+    const prefix = inputCode.slice(0, 2)
+
+    // まだメモリに乗っていなければ GM_getValue で読み込む
+    if (!this.loadedWordChunks.has(prefix)) {
+      const chunk = await GM_getValue<ZhWord[]>(`words_prefix_${prefix}`, [])
+      this.loadedWordChunks.set(prefix, chunk)
+    }
+
+    const words = this.loadedWordChunks.get(prefix) ?? []
+    // 入力コードに前方一致する単語を返す
+    return words.filter(w => w.code.startsWith(inputCode))
+  }
+
+  // --- 内部ヘルパー: 二分探索挿入 ＆ 保存 ---
+  private async upsertItem<T>(
+    list: T[],
+    item: T,
+    isEqual: (a: T, b: T) => boolean,
+    compare: (a: T, b: T) => number,
+    saveFn: (updatedList: T[]) => Promise<void>,
+  ) {
+    const existingIdx = list.findIndex(target => isEqual(target, item))
+    if (existingIdx !== -1) {
+      list.splice(existingIdx, 1)
+    }
+
+    const insertIdx = binarySearch(list, target => compare(target, item) >= 0)
+    list.splice(insertIdx, 0, item)
+
+    await saveFn(list)
+  }
+
+  // --- 公開API (記述が大幅にスッキリします) ---
+  async updateCode(code: ZhCode) {
+    await this.upsertItem(
+      this.codes,
+      code,
+      (a, b) => a.zh === b.zh && a.code === b.code && a.schema === b.schema,
+      compareItems,
+      storage.setCodes,
+    )
+  }
+
+  async updateWord(newWord: ZhWord) {
+    // await this.upsertItem(
+    //   this.words,
+    //   word,
+    //   (a, b) => a.zh === b.zh && a.code === b.code && a.schema === b.schema,
+    //   compareItems,
+    //   storage.setWords,
+    // )
+
+    const prefix = newWord.code.slice(0, 2)
+
+    // 1. ストレージに保存
+    await storage.addWord(newWord)
+
+    // 2. オンメモリの Cache も更新（すでにロード済みの場合のみ追加）
+    if (this.loadedWordChunks.has(prefix)) {
+      this.loadedWordChunks.get(prefix)!.push(newWord)
+    }
+  }
+
+  async updateHanzi(hanzi: Hanzi) {
+    await this.upsertItem(
+      this.hans,
+      hanzi,
+      (a, b) => a.zh === b.zh,
+      compareHans,
+      storage.setHans,
+    )
+  }
+
+  async hideCode(code: ZhCode) {
+    await this.updateCode({ ...code, on: false })
+  }
+
+  async hideWord(word: ZhWord) {
+    const updated = { ...word, on: false }
+    const prefix = updated.code.slice(0, 2)
+
+    await storage.addWord(updated)
+
+    if (this.loadedWordChunks.has(prefix)) {
+      const chunk = this.loadedWordChunks.get(prefix)!
+      const idx = chunk.findIndex(w => codewordIsEqual(w, word))
+      if (idx !== -1) {
+        chunk[idx] = updated
+      }
+    }
+  }
+
+  // （prefixSearch や getHans はそのまま）
   // 二分探索を使って指定 prefix の開始・終了インデックスの範囲を取得
   private getPrefixRange<T extends { schema: Schema; code: string }>(
     list: T[],
@@ -878,16 +1009,19 @@ export class Cache {
     return list.slice(startIndex, endIndex)
   }
 
-  prefixSearch(schema: Schema, prefix: string): Cand[] {
+  async prefixSearch(schema: Schema, prefix: string): Promise<Cand[]> {
     if (!prefix) return []
 
     // 1. 二分探索で該当する prefix のアイテム範囲だけを O(log N) で一括抽出
     const targetCodes = this.getPrefixRange(this.codes, schema, prefix)
-    const targetWords = this.getPrefixRange(this.words, schema, prefix)
+    const targetWords =
+      // this.getPrefixRange(this.words, schema, prefix)
+      (await this.getWordsByCode(prefix)).filter(w => w.schema === schema)
 
     const matchedCodes: ZhCode[] = []
     const prefixMatchedCodes: ZhCode[] = []
     for (const c of targetCodes) {
+      if (!c.on) continue
       if (c.code === prefix) matchedCodes.push(c)
       else prefixMatchedCodes.push(c) // 抽出範囲内なので c.code.startsWith(prefix) は確定
     }
@@ -895,6 +1029,7 @@ export class Cache {
     const matchedWords: ZhWord[] = []
     const prefixMatchedWords: ZhWord[] = []
     for (const w of targetWords) {
+      if (!w.on) continue
       if (w.code === prefix) matchedWords.push(w)
       else prefixMatchedWords.push(w)
     }
@@ -931,120 +1066,54 @@ export class Cache {
    * 指定した漢字（zh）に一致する Hanzi レコード配列を二分探索で取得
    * @param zh 検索したい漢字 (例: "漢")
    */
-  getHans(zh: string): Hanzi[] {
-    if (!zh) return []
+  // getHans(zh: string): Hanzi[] {
+  //   if (!zh) return []
 
-    // 1. 指定した zh 以上（>= zh）が最初に現れるインデックスを取得
-    const startIndex = binarySearch(
-      this.hans,
-      item => item.zh.localeCompare(zh) >= 0,
-    )
+  //   // 1. 指定した zh 以上（>= zh）が最初に現れるインデックスを取得
+  //   const startIndex = binarySearch(
+  //     this.hans,
+  //     // item => item.zh.localeCompare(zh) >= 0,
+  //     item => item.zh >= zh,
+  //   )
 
-    // 2. 指定した zh より大きい（> zh）が最初に現れるインデックスを取得
-    const endIndex = binarySearch(
-      this.hans,
-      item => item.zh.localeCompare(zh) > 0,
-    )
+  //   // 2. 指定した zh より大きい（> zh）が最初に現れるインデックスを取得
+  //   const endIndex = binarySearch(
+  //     this.hans,
+  //     // item => item.zh.localeCompare(zh) > 0,
+  //     item => item.zh > zh,
+  //   )
 
-    // 該当範囲を O(log N) でスライスして返却
-    return this.hans.slice(startIndex, endIndex)
+  //   // 該当範囲を O(log N) でスライスして返却
+  //   return this.hans.slice(startIndex, endIndex)
+  // }
+
+  getHanzi(hanzi: string): Hanzi[] {
+    if (!hanzi) return []
+    return this.hansMap.get(hanzi) ?? []
   }
 
-  // データ更新時：二分探索で挿入位置を特定して配列のソート状態を維持
-  async updateCode(code: ZhCode) {
-    await putIDB([code], STORE_CODE)
+  getHans(hans: string): Hanzi[] {
+    if (!hans) return []
 
-    // 既存データのインデックスを特定
-    const existingIdx = this.codes.findIndex(
-      c => c.zh === code.zh && c.code === code.code && c.schema === code.schema,
-    )
+    // スプレッド構文 [...hans] でサロゲートペア（特殊漢字）を崩さず分解
+    return [...hans].flatMap(char => {
+      const candidates = this.getHanzi(char)
+      if (candidates.length === 0) return []
+      if (candidates.length === 1) return candidates
 
-    if (existingIdx !== -1) {
-      // 既存の要素を削除（再挿入で順序を保つため）
-      this.codes.splice(existingIdx, 1)
-    }
+      // 1. toCqkm が有効なものを優先
+      const cqkmCandidates = candidates.filter(h => toCqkm(h))
+      const targets = cqkmCandidates.length > 0 ? cqkmCandidates : candidates
 
-    // 二分探索で新しい挿入位置（O(log N)）を検索
-    const insertIdx = binarySearch(
-      this.codes,
-      item => compareItems(item, code) >= 0,
-    )
+      // 2. 日付の降順（新しい順）でソートして先頭1件を取得
+      const best = [...targets].sort((a, b) => {
+        const timeA = new Date(a.date).getTime()
+        const timeB = new Date(b.date).getTime()
+        return timeB - timeA
+      })[0]
 
-    this.codes.splice(insertIdx, 0, code)
-  }
-
-  async updateWord(word: ZhWord) {
-    await putIDB([word], STORE_WORD)
-
-    const existingIdx = this.words.findIndex(
-      w => w.zh === word.zh && w.code === word.code && w.schema === word.schema,
-    )
-
-    if (existingIdx !== -1) {
-      this.words.splice(existingIdx, 1)
-    }
-
-    const insertIdx = binarySearch(
-      this.words,
-      item => compareItems(item, word) >= 0,
-    )
-
-    this.words.splice(insertIdx, 0, word)
-  }
-
-  // データ更新時（Hanzi の追加・更新）
-  async updateHanzi(hanzi: Hanzi) {
-    await putIDB([hanzi], STORE_HANZI)
-
-    const existingIdx = this.hans.findIndex(h => h.zh === hanzi.zh)
-
-    if (existingIdx !== -1) {
-      this.hans.splice(existingIdx, 1)
-    }
-
-    // 二分探索で適切な挿入位置を検索
-    const insertIdx = binarySearch(
-      this.hans,
-      item => compareHans(item, hanzi) >= 0,
-    )
-
-    this.hans.splice(insertIdx, 0, hanzi)
-  }
-
-  async hideCode(code: ZhCode) {
-    await putIDB(
-      [
-        {
-          ...code,
-          on: false,
-        },
-      ],
-      STORE_CODE,
-    )
-
-    const existingIdx = this.codes.findIndex(
-      c => c.zh === code.zh && c.code === code.code && c.schema === code.schema,
-    )
-
-    this.codes.splice(existingIdx, 1)
-  }
-
-  async hideWord(word: ZhWord) {
-    await putIDB(
-      [
-        {
-          ...word,
-          on: false,
-        },
-      ],
-      STORE_WORD,
-    )
-
-    const existingIdx = this.words.findIndex(
-      w => w.zh === word.zh && w.code === word.code && w.schema === word.schema,
-    )
-
-    this.words.splice(existingIdx, 1)
+      return best ? [best] : []
+    })
   }
 }
 
@@ -1060,7 +1129,7 @@ export interface ImeState {
   buffer: string
   inputHistory: (string | Cand)[]
   schemaHistory: Schema[]
-  target: null | HTMLInputElement | HTMLTextAreaElement
+  target: null | HTMLInputElement | HTMLTextAreaElement | HTMLElement
   selectedIndexMax: number
 }
 
@@ -1262,113 +1331,46 @@ export const launchIME = async () => {
   console.log("initial IME state", state)
 }
 
-async function prefixSearch() {
-  const [matchz, nextz] = await getZhCode(
-    // STORE_CODE,
-    state.schema,
-    state.buffer,
-  )
+export type ImeStoreValueType = "hans" | "codes" | "words"
+export const imeInitializeGM = async (type: ImeStoreValueType) => {
+  if (type === "hans") {
+    const url = prompt("Hanzi[] json URL")
+    if (!url) return
+    const res = await fetch(new Request(url))
+    const hans: Hanzi[] = await res.json()
+    console.log("hans", hans)
 
-  const [matchw, nextw] = await getZhWord(state.schema, state.buffer)
+    const completed = hans.map(h => ({
+      ...h,
+      date: new Date(),
+      on: true,
+      user: false,
+    }))
 
-  // const nexts = [
-  //   ...nextz.map(fromZhCode),
-  //   ...nextw.map(fromZhWord)
-  // ].sort((a, b) =>
-  //     a.code.length === b.code.length
-  //   ? ([a.code, b.code].sort()[0] === a.code ? -1 : 1)
-  //   : a.code.length - b.code.length)
+    await storage.setHans(completed)
+    await state.cache.reset("hans")
+    const hansStored = await storage.getHans()
+    console.log("hansStored", hansStored)
+  } else if (type === "codes") {
+    const url = prompt("ZhCode[] json URL")
+    if (!url) return
+    const res = await fetch(new Request(url))
+    const _codes: ZhCode[] = await res.json()
+    const codes = _codes.map(c => ({
+      ...c,
+      date: new Date(),
+      on: true,
+      user: false,
+    }))
+    console.log("codes", codes)
 
-  const cands = [
-    ...matchz.map(fromZhCode),
-    ...matchw.map(fromZhWord),
-    ...nextz.map(fromZhCode),
-    ...nextw.map(fromZhWord),
-  ]
+    // codes.forEach(state.cache.updateCode)
+    await storage.setCodes(codes)
+    await state.cache.reset("codes")
 
-  return cands
+    const codesStored = await storage.getCodes()
+    console.log("codesStored", codesStored)
+  } else if (type === "words") {
+    await importWordsJSONArray()
+  }
 }
-
-// const suffixForSameCodeCandidates = (cands: Cand[]) => {
-//   // let lastCode: string | undefined
-//   const needSuffix: Cand[] = []
-//   const suffixed: Cand[] = []
-//   const remained: Cand[] = []
-//   for (const c of cands) {
-//     if (
-//       c.suffix !== undefined
-//         ? c.suffix.length === 0
-//         : c.code.length === state.buffers.map(s => s.length).sum()
-//     ) {
-//       needSuffix.push(c)
-//     } else if (c.suffix) suffixed.push(c)
-//     else remained.push(c)
-//   }
-
-//   state.lastRemained = remained.length > 0
-
-//   // const sameCodes = []
-//   // for (const c of cands) {
-//   //   const code = c.suffix ? c.suffix : c.code.slice(state.buffer.length - 1)
-//   //   if (lastCode ? lastCode === code : true) {
-//   //     sameCodes.push(c)
-//   //     lastCode = code
-//   //   } else break
-//   // }
-//   // console.log("sameCodes", sameCodes)
-
-//   if (needSuffix.length < 2) {
-//     if (suffixed.length + needSuffix.length === 0) state.suffixStart = null
-//     return cands
-//   } else {
-//     const isFirstSuffix = state.suffixStart === null
-//     if (state.suffixStart) {
-//       state.suffixStart +=
-//         suffixed.length > 0 ? (suffixed[0].suffix?.length ?? 0) : 1
-//     } else {
-//       state.suffixStart = state.buffer.length
-//     }
-
-//     const suffixes = getSuffixes(
-//       state.buffer,
-//       remained,
-//       needSuffix.length - 1,
-//     ).reverse()
-
-//     console.log({
-//       suffixStart: state.suffixStart,
-//       needSuffix,
-//       suffixed,
-//       remained,
-//       suffixes,
-//     })
-
-//     const newSuffixed = needSuffix.map((cand, i) => {
-//       const suffix =
-//         i === 0
-//           ? cand.v.type === "zhword" && isFirstSuffix
-//             ? state.schema === "cqkm"
-//               ? cand.v.v.hans.map(h => h.cqkmForm.slice(2)).join("")
-//               : state.schema === "cqkmxy"
-//                 ? cand.v.v.hans.map(h => h.cqkmForm.slice(3)).join("")
-//                 : suffixes.pop()
-//             : ""
-//           : cand.v.type === "zhcode"
-//             ? suffixes.pop()
-//             : isFirstSuffix
-//               ? state.schema === "cqkm"
-//                 ? cand.v.v.hans.map(h => h.cqkmForm.slice(2)).join("")
-//                 : state.schema === "cqkmxy"
-//                   ? cand.v.v.hans.map(h => h.cqkmForm.slice(3)).join("")
-//                   : suffixes.pop()
-//               : suffixes.pop()
-
-//       return {
-//         ...cand,
-//         suffix,
-//       }
-//     })
-
-//     return [...newSuffixed, ...remained]
-//   }
-// }

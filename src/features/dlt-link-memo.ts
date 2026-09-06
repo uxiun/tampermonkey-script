@@ -32,7 +32,7 @@ import {
   getImeState,
   importWordsJSONArray,
   initializeCache,
-  restoreUserAdded,
+  // restoreUserAdded,
 } from "./ime"
 
 export interface AppState {
@@ -452,7 +452,7 @@ export async function startLinkMemo(option: LinkMemoOption) {
           case "q": {
             e.preventDefault()
             e.stopImmediatePropagation()
-            await restoreUserAdded()
+            // await restoreUserAdded()
             break
           }
 

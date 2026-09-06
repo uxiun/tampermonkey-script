@@ -1,13 +1,28 @@
 import "dotenv/config"
 import * as esbuild from "esbuild"
 import { globSync } from "node:fs"
-import { tsconfigPathsPlugin } from "esbuild-plugin-tsconfig-paths"
+
+// // Tampermonkey 用のメタデータヘッダー
+// const bannerText = `// ==UserScript==
+// // @name         Global Custom IME & Link Memo
+// // @namespace    http://tampermonkey.net/
+// // @version      1.0.0
+// // @description  全ドメイン対応のカスタムIMEとLinkMemo
+// // @author       You
+// // @match        *://*/*
+// // @grant        GM_setValue
+// // @grant        GM_getValue
+// // @grant        GM_deleteValue
+// // @grant        GM_addValueChangeListener
+// // @run-at       document-end
+// // ==/UserScript==
+// `
 
 const isWatch = process.argv.includes("--watch") // --watch オプションの有無
 const dist = process.argv.includes("--dist") // --watch オプションの有無
 
 // .envになければ ./dist
-const distDir = dist ? "./dist" : process.env.AC_DIST_DIR || "./dist"
+const distDir = dist ? "./dist" : process.env.SCRIPT_DIR || "./dist"
 
 async function run() {
   const entryPoints = globSync("src/*.ts")
@@ -17,7 +32,9 @@ async function run() {
     entryPoints,
     bundle: true,
     outdir: distDir,
-    format: "esm",
+    // format: "esm",
+    format: "iife",
+    // banner: { js: bannerText },
     platform: "browser", // ★1: ブラウザ環境向けであることを明示
     mainFields: ["browser", "module", "main"], // ★2: package.json の "browser" フィールドを優先
     define: {

@@ -32,7 +32,7 @@ export function getVisibleElements(
 }
 
 export function getPopupPosition(
-  inputEl: HTMLTextAreaElement | HTMLInputElement,
+  inputEl: HTMLTextAreaElement | HTMLInputElement | HTMLElement,
   startPos: number,
   mirrorElementId: string,
 ) {
@@ -50,7 +50,7 @@ export function getPopupPosition(
   }
 
   function _getPopupPosition(
-    inputEl: HTMLTextAreaElement | HTMLInputElement,
+    inputEl: HTMLTextAreaElement | HTMLInputElement | HTMLElement,
     startPos: number,
   ) {
     if (!mirrorEl)
@@ -60,6 +60,11 @@ export function getPopupPosition(
         lineHeight: 20,
       }
 
+    // ★ 修正箇所：input / textarea なら .value、contenteditable 等なら .textContent を取得
+    const fullText =
+      "value" in inputEl && typeof (inputEl as any).value === "string"
+        ? (inputEl as HTMLInputElement).value
+        : (inputEl.textContent ?? "")
     const rect = inputEl.getBoundingClientRect()
     const styles = window.getComputedStyle(inputEl)
 
@@ -79,7 +84,7 @@ export function getPopupPosition(
     })
     mirrorEl.style.width = `${rect.width}px`
 
-    const textBeforeBrace = inputEl.value.slice(0, startPos)
+    const textBeforeBrace = fullText.slice(0, startPos)
     mirrorEl.textContent = textBeforeBrace
 
     const marker = document.createElement("span")

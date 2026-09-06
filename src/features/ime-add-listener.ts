@@ -7,12 +7,13 @@ import { getSuffixes } from "./keys"
 
 import {
   Cand,
-  getHans,
+  // getHans,
   globalImeState,
   hanziInfo,
+  imeInitializeGM,
   InlineSuggestPopup,
   multiZaociPrompt,
-  putWordsIDB,
+  // putWordsIDB,
   Schema,
   zaoci,
 } from "@/features/ime"
@@ -23,10 +24,11 @@ export const onTabLoadIME = async () => {
   if ((window as any).__ac_ime__) return
   ;(window as any).__ac_ime__ = true
   console.log("IME on tab load")
+  ;(window as any).__ime_state__ = globalImeState
 
   const state = globalImeState
   const inlinePopup = new InlineSuggestPopup()
-  state.cache.init()
+  await state.cache.init()
 
   const keyManager = new KeyManager(40, committedChord => {
     if (!state.active || !state.target) return
@@ -195,6 +197,12 @@ export const onTabLoadIME = async () => {
         setState.diactivate()
         showToast("IME OFF")
         return
+      }
+
+      if (e.ctrlKey && e.key === "k") {
+        e.preventDefault()
+        e.stopImmediatePropagation()
+        runCommandPrompt()
       }
 
       if (
@@ -512,19 +520,17 @@ export const onTabLoadIME = async () => {
 
     setState.resetBuffer()
 
-    if (
-      state.schema === "cj5" ||
-      state.schema === "cqkm" ||
-      state.schema === "cqkmxy"
-    ) {
-      const hans = getHans(cand.text)
-      coords.top -= coords.lineHeight + 32
-      coords.left -= 5
+    // if (
+    //   state.schema === "cj5" ||
+    //   state.schema === "cqkm" ||
+    //   state.schema === "cqkmxy"
+    // ) {
+    //   const hans = state.cache.getHans(cand.text)
+    //   coords.top -= coords.lineHeight + 32
+    //   coords.left -= 5
 
-      hans.then(hans =>
-        showToastAt(hans.map(hanziInfo).join("  "), coords, 3000, 299999),
-      )
-    }
+    //   showToastAt(hans.map(hanziInfo).join("  "), coords, 3000, 299999)
+    // }
   }
 
   const setState = {
@@ -565,17 +571,70 @@ export const onTabLoadIME = async () => {
     return target.value.slice(0, state.startPos).endsWith(last)
   }
 
-  function setText(text: string, start?: number, end?: number) {
-    if (!state.target) return
-    state.target.setRangeText(
-      text,
-      start ?? state.startPos,
-      end ?? state.endPos,
-      "end",
+  function isHTMLInputElement(
+    el: HTMLElement,
+  ): el is HTMLInputElement | HTMLTextAreaElement {
+    return (
+      "setRangeText" in el && typeof (el as any).setRangeText === "function"
     )
-    state.target.dispatchEvent(new Event("input", { bubbles: true }))
-    state.startPos = state.target.selectionStart ?? 0
-    state.endPos = state.target.selectionEnd ?? 0
+  }
+
+  function setText(text: string, start?: number, end?: number) {
+    const target = state.target
+    if (!target) return
+
+    // 1. 標準の input / textarea の場合
+    if (isHTMLInputElement(target)) {
+      target.setRangeText(
+        text,
+        start ?? state.startPos,
+        end ?? state.endPos,
+        "end",
+      )
+      target.dispatchEvent(new Event("input", { bubbles: true }))
+      state.startPos = target.selectionStart ?? 0
+      state.endPos = target.selectionEnd ?? 0
+      return
+    }
+
+    // 2. Dynalist 等の ContentEditable 要素の場合
+    if (target.isContentEditable) {
+      target.focus()
+
+      // ブラウザの Selection API で選択範囲を取得・操作する
+      const sel = window.getSelection()
+      if (sel && sel.rangeCount > 0) {
+        // 選択されている（または変換対象の）テキストを削除して挿入
+        // ※ execCommand("insertText") を使うと Undo (Ctrl+Z) 履歴が壊れず安全です
+        const success = document.execCommand("insertText", false, text)
+
+        // execCommand が非推奨で動かない環境向けのフォールバック (Range API)
+        if (!success) {
+          const range = sel.getRangeAt(0)
+          range.deleteContents()
+          const textNode = document.createTextNode(text)
+          range.insertNode(textNode)
+
+          // カーソルを挿入したテキストの直後に移動
+          range.setStartAfter(textNode)
+          range.setEndAfter(textNode)
+          sel.removeAllRanges()
+          sel.addRange(range)
+        }
+      } else {
+        // キャレットがない場合は末尾に追加
+        target.textContent += text
+      }
+
+      // 変更イベントを通知（Dynalist 側に文字入力を認識させる）
+      target.dispatchEvent(
+        new InputEvent("input", {
+          bubbles: true,
+          inputType: "insertText",
+          data: text,
+        }),
+      )
+    }
   }
 
   function setSchema(schema: Schema) {
@@ -624,7 +683,7 @@ export const onTabLoadIME = async () => {
       }
     })
 
-    const searched = state.cache.prefixSearch(state.schema, state.buffer)
+    const searched = await state.cache.prefixSearch(state.schema, state.buffer)
 
     if (needSuffix.length < 2) {
       state.candidates = [...needSuffix, ...searched]
@@ -677,4 +736,86 @@ export const onTabLoadIME = async () => {
         },
       }
     })
+}
+
+export const runCommandPrompt = async () => {
+  const command = prompt("command:")
+  if (!command) return
+  runCommand(command)
+}
+
+export const runCommand = async (command: string) => {
+  switch (command) {
+    case "zaoci": {
+      const zh = prompt("追加する際の綴を確認したい単語")
+      if (!zh) return
+      const word = await zaoci("cqkm", zh)
+      console.log("zaoci result:", word)
+      break
+    }
+    case "init ime": {
+      let ok = confirm("IMEに必要な情報の初期化を始めます")
+      if (!ok) return
+      await imeInitializeGM("hans")
+      ok = confirm("先程の処理は成功した？")
+      if (!ok) return
+      await imeInitializeGM("codes")
+      ok = confirm("先程の処理は成功した？")
+      if (!ok) return
+      await imeInitializeGM("words")
+      break
+    }
+
+    case "init ime word": {
+      await imeInitializeGM("words")
+      break
+    }
+
+    case "delete chunks": {
+      console.log("削除を開始します...")
+
+      // 0〜100 までの chunk を削除（十分な数を指定）
+      for (let i = 0; i < 100; i++) {
+        await GM_deleteValue(`words_chunk_${i}`)
+      }
+      // 単語数管理用のキーも削除
+      await GM_deleteValue("words_chunk_count")
+      await GM_deleteValue("gm_ime_words")
+
+      console.log("削除完了。確認を行います:")
+      for (let i = 0; i < 5; i++) {
+        const key = `words_chunk_${i}`
+        const res = await GM_getValue(key)
+        console.log(`[CHECK] ${key}:`, res ?? "undefined (正常に削除済み)")
+      }
+      break
+    }
+
+    case "check deleted": {
+      for (let i = 0; i < 10; i++) {
+        const key = `words_chunk_${i}`
+        const res = await GM_getValue(key)
+        console.log(`[CHECK] ${key}:`, res)
+      }
+      break
+    }
+
+    case "delete key": {
+      const text = prompt("消したい GM keyを（カンマ区切りで）")
+      if (!text) return
+      const keys = text.split(",").map(key => key.trim())
+      console.log("消す GM keys:", keys)
+
+      for (const key of keys) {
+        await GM_deleteValue(key)
+      }
+
+      console.log("消せたか確認")
+      for (const key of keys) {
+        const res = await GM_getValue(key)
+        console.log(`GM_getValue("${key}"):`, res ?? "undefined (削除済み)")
+      }
+      break
+    }
+  }
 }
