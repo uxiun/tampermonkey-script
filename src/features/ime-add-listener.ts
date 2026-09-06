@@ -7,8 +7,9 @@ import { getSuffixes } from "./keys"
 
 import {
   Cand,
+  getGlobalImeState,
   // getHans,
-  globalImeState,
+  // globalImeState,
   hanziInfo,
   imeInitializeGM,
   InlineSuggestPopup,
@@ -23,12 +24,16 @@ type InputElement = HTMLInputElement | HTMLTextAreaElement
 export const onTabLoadIME = async () => {
   if ((window as any).__ac_ime__) return
   ;(window as any).__ac_ime__ = true
-  console.log("IME on tab load")
-  ;(window as any).__ime_state__ = globalImeState
+  // ;(window as any).__ime_state__ = globalImeState
 
-  const state = globalImeState
+  console.log("onTabLoadIME")
+  // const state = globalImeState
+  const state = getGlobalImeState()
+
+  console.log("renamed globalImeState as state")
   const inlinePopup = new InlineSuggestPopup()
   await state.cache.init()
+  console.log("just after state.cache.init()")
 
   const keyManager = new KeyManager(40, committedChord => {
     if (!state.active || !state.target) return
@@ -168,6 +173,8 @@ export const onTabLoadIME = async () => {
     },
     true,
   ) // capture phase じゃないと stopPropagation で潰されて届かない
+
+  console.log("set keyup listener")
 
   window.addEventListener(
     "keydown",
@@ -333,6 +340,11 @@ export const onTabLoadIME = async () => {
         e.stopImmediatePropagation()
         multiZaociPrompt()
       }
+      if (e.ctrlKey && e.key === "d") {
+        e.preventDefault()
+        e.stopImmediatePropagation()
+        zaociPrompt(2)
+      }
 
       if (e.shiftKey || e.altKey || e.ctrlKey || e.metaKey) return
       // 以下は全て単打
@@ -341,7 +353,7 @@ export const onTabLoadIME = async () => {
         if (state.buffer.length === 0) {
           e.preventDefault()
           e.stopImmediatePropagation()
-          zaociPrompt(2)
+          multiZaociPrompt("set user true")
         } else {
           if (state.schema === "cqkm") {
             e.preventDefault()
@@ -467,6 +479,8 @@ export const onTabLoadIME = async () => {
     },
     true,
   )
+
+  console.log("set keydown listener")
 
   function renderWidget() {
     if (!state.active || !state.target) {
@@ -683,6 +697,7 @@ export const onTabLoadIME = async () => {
       }
     })
 
+    console.log("buffer:", state.buffer)
     const searched = await state.cache.prefixSearch(state.schema, state.buffer)
 
     if (needSuffix.length < 2) {
@@ -713,17 +728,29 @@ export const onTabLoadIME = async () => {
         i === 0
           ? cand.v.type === "zhword" && !cand.suffix
             ? state.schema === "cqkm"
-              ? cand.v.v.hans.map(h => h.cqkmForm.slice(2)).join("")
+              ? state.cache
+                  .getHans(cand.text)
+                  .map(h => h.cqkmForm?.slice(2))
+                  .join("")
               : state.schema === "cqkmxy"
-                ? cand.v.v.hans.map(h => h.cqkmForm.slice(3)).join("")
+                ? state.cache
+                    .getHans(cand.text)
+                    .map(h => h.cqkmForm?.slice(3))
+                    .join("")
                 : suffixes.pop()
             : ""
           : cand.v.type === "zhword"
             ? !cand.suffix
               ? state.schema === "cqkm"
-                ? cand.v.v.hans.map(h => h.cqkmForm.slice(2)).join("")
+                ? state.cache
+                    .getHans(cand.text)
+                    .map(h => h.cqkmForm?.slice(2))
+                    .join("")
                 : state.schema === "cqkmxy"
-                  ? cand.v.v.hans.map(h => h.cqkmForm.slice(3)).join("")
+                  ? state.cache
+                      .getHans(cand.text)
+                      .map(h => h.cqkmForm?.slice(3))
+                      .join("")
                   : suffixes.pop()
               : suffixes.pop()
             : suffixes.pop()

@@ -96,11 +96,7 @@ const pinyinDisplay = (cand: Cand, isSelected: boolean) => {
   // console.log(py, toneNumEnd)
 
   const hans =
-    cand.v.type === "zhcode"
-      ? cand.v.hans
-      : cand.v.type === "zhword"
-        ? cand.v.v.hans
-        : []
+    cand.v.type === "zhcode" || cand.v.type === "zhword" ? cand.v.hans : []
 
   const toneColors = [
     ["rgb(85, 81, 81)", "rgb(219, 219, 219)"],
@@ -151,11 +147,7 @@ export const candidateTip = (
 
   const belowTexts =
     cand.v.type === "zhcode" || cand.v.type === "zhword"
-      ? [
-          (cand.v.type === "zhcode" ? cand.v.hans : cand.v.v.hans)
-            .map(h => h.pinyins.at(0))
-            .join(" "),
-        ]
+      ? [cand.v.hans.map(h => h.pinyins.at(0)).join(" ")]
       : []
 
   const aboveTexts = [remCode]

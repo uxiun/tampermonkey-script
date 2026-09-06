@@ -2,7 +2,12 @@ import { mergeObjects, transpose } from "@/pure/utils"
 import { candidateTip } from "./dlt-component"
 import { Key, Single } from "@/pure/key"
 import { showToast } from "@/pure/component"
-import { saveWordsByPrefix, storage } from "./ime-storage"
+import {
+  PREFIX_MAX_LEN,
+  restoreCode,
+  saveWordsByPrefix,
+  storage,
+} from "./ime-storage"
 
 // const DB_NAME = "ac_ime_db"
 // const DB_VERSION = 2
@@ -74,139 +79,13 @@ export interface ZhWord {
   code: string
   schema: Schema
   nth: number
-  hans: Cqkm[]
+  // hans: Cqkm[]
   on: boolean
   date: Date
   user: boolean // user added or not
 }
 
 export type Schema = "cj5" | "cqkm" | "cqkmxy" | "hiragana" | "katakana"
-
-// type SyncMessage<T> = { type: "updated" | "deleted"; items: T[] }
-
-// const syncChannel = new BroadcastChannel("ac_ime_channel")
-
-// export function openDB(): Promise<IDBDatabase> {
-//   return new Promise((resolve, reject) => {
-//     const request = indexedDB.open(DB_NAME, DB_VERSION)
-
-//     request.onupgradeneeded = _e => {
-//       const db = request.result
-//       if (!db.objectStoreNames.contains(STORE_HANZI)) {
-//         const store = db.createObjectStore(STORE_HANZI, {
-//           keyPath: "zh",
-//         })
-//         store.createIndex("pinyins", "pinyins", {
-//           unique: false,
-//           multiEntry: true,
-//         })
-//         store.createIndex("cj5", "cj5", { unique: false, multiEntry: true })
-//         store.createIndex("cqkmInitials", "cqkmInitials", {
-//           unique: false,
-//           multiEntry: true,
-//         })
-//         store.createIndex("cqkmForm", "cqkmForm", { unique: false })
-//         store.createIndex("on", "on")
-//         store.createIndex("date", "date")
-//         store.createIndex("user", "user")
-//       }
-
-//       if (!db.objectStoreNames.contains(STORE_CODE)) {
-//         const store = db.createObjectStore(STORE_CODE, {
-//           keyPath: [...CODE_KEYPATH],
-//         })
-//         store.createIndex("code", "code")
-//         store.createIndex("schema", "schema")
-//         store.createIndex("nth", "nth")
-//         store.createIndex("on", "on")
-//         store.createIndex("date", "date")
-//         store.createIndex("user", "user")
-//         store.createIndex("codeNth", ["code", "nth"])
-//         store.createIndex("schemaCodeNth", ["schema", "code", "nth"])
-//         store.createIndex("zh", "zh", { unique: false })
-//       }
-
-//       if (!db.objectStoreNames.contains(STORE_WORD)) {
-//         const store = db.createObjectStore(STORE_WORD, {
-//           keyPath: [...CODE_KEYPATH],
-//         })
-//         store.createIndex("code", "code")
-//         store.createIndex("schema", "schema")
-//         store.createIndex("nth", "nth")
-//         store.createIndex("on", "on")
-//         store.createIndex("date", "date")
-//         store.createIndex("user", "user")
-//         store.createIndex("codeNth", ["code", "nth"])
-//         store.createIndex("schemaCodeNth", ["schema", "code", "nth"])
-//         store.createIndex("zh", "zh", { unique: false })
-//       }
-//     }
-
-//     request.onsuccess = () => resolve(request.result)
-//     request.onerror = () => reject(request.error)
-//   })
-// }
-
-// export const getAllHansFromIDB = () => getAllFromIDB<Hanzi>(STORE_HANZI)
-// export const getAllCodesFromIDB = () => getAllFromIDB<ZhCode>(STORE_CODE)
-
-// export async function getHansGM() {
-//   return GM_getValue<Hanzi[]>(GM_IME_HANZI)
-// }
-// export async function getCodesGM() {
-//   return GM_getValue<ZhCode[]>(GM_IME_CODES)
-// }
-// export async function getWordsGM() {
-//   return GM_getValue<ZhWord[]>(GM_IME_WORDS)
-// }
-
-// export async function setHansGM(hans: Hanzi[]) {
-//   GM_setValue(GM_IME_HANZI, hans)
-// }
-// export async function setCodesGM(codes: ZhCode[]) {
-//   GM_setValue(GM_IME_CODES, codes)
-// }
-// export async function setWordsGM(words: ZhWord[]) {
-//   GM_setValue(GM_IME_WORDS, words)
-// }
-
-// export async function putHansGM(hans: Hanzi[]) {
-//   const stored = await getHansGM()
-//   GM_setValue(GM_IME_HANZI, [...stored, ...hans])
-// }
-// export async function putCodesGM(codes: ZhCode[]) {
-//   const stored = await getCodesGM()
-//   GM_setValue(GM_IME_CODES, [...stored, ...codes])
-// }
-// export async function putWordsGM(words: ZhWord[]) {
-//   const stored = await getWordsGM()
-//   GM_setValue(GM_IME_WORDS, [...stored, ...words])
-// }
-
-// export async function putHansGM(hans: Hanzi[]) {
-//   GM_setValue(GM_IME_HANZI, hans)
-// }
-// export async function putCodesGM(codes: ZhCode[]) {
-//   GM_setValue(GM_IME_CODES, codes)
-// }
-// export async function putWordsGM(words: ZhWord[]) {
-//   GM_setValue(GM_IME_WORDS, words)
-// }
-
-// async function getAllFromIDB<T>(storeName: string): Promise<T[]> {
-//   const db = await openDB()
-//   return new Promise((resolve, reject) => {
-//     const tx = db.transaction(storeName, "readonly")
-//     const store = tx.objectStore(storeName)
-//     const request = store.getAll()
-
-//     request.onsuccess = () => {
-//       const items: T[] = request.result || []
-//       resolve(items)
-//     }
-//     request.onerror = () => reject(request.error)
-//   })
-// }
 
 const IME_USER_ADDED_BACKUP_PATH = "<documents>/autocontrol-ime-user-added.json"
 interface UserAddedBackup {
@@ -559,6 +438,7 @@ export async function zaoci(
   zh: string,
   // exceptionOption: ExceptionOption = "skip",
 ) {
+  const state = getGlobalImeState()
   // const hans = await getHans(zh)
   const hans = state.cache.getHans(zh)
   if (schema === "cqkm" || schema === "cqkmxy") {
@@ -585,7 +465,7 @@ export async function zaoci(
 
     const w: ZhWord = {
       code: "",
-      hans: hs,
+      // hans: hs,
       nth: 0,
       schema,
       zh,
@@ -616,8 +496,14 @@ export async function zaoci(
   }
 }
 
-export const multiZaociPrompt = () => {
-  const isUser = confirm("これから登録する単語を手動追加分として記録しますか？")
+export const multiZaociPrompt = (
+  askIsUser: "ask" | "set user true" | "set user false" = "ask",
+) => {
+  const isUser =
+    askIsUser === "ask"
+      ? confirm("これから登録する単語を手動追加分として記録しますか？")
+      : askIsUser === "set user true"
+
   const text = prompt(
     "登録したい単語を貼り付けて（漢字熟語を正規表現で抽出します）",
   )
@@ -645,6 +531,7 @@ export const importWordsJSONArray = async () => {
 }
 
 export const multiZaoci = async (words: string[], user: boolean) => {
+  const state = getGlobalImeState()
   let zhwords: ZhWord[] = []
 
   // for (const s of spells.slice(0, 20)) {
@@ -686,19 +573,19 @@ export interface Cand {
 
 type CandVar =
   | { type: "zhcode"; v: ZhCode; hans: Hanzi[] }
-  | { type: "zhword"; v: ZhWord }
+  | { type: "zhword"; v: ZhWord; hans: Hanzi[] }
   | { type: "other"; memo?: string }
 
 const fromZhCode = (z: ZhCode): Cand => ({
   code: z.code,
   text: z.zh,
-  v: { type: "zhcode", v: z, hans: state.cache.getHans(z.zh) },
+  v: { type: "zhcode", v: z, hans: getGlobalImeState().cache.getHans(z.zh) },
 })
 
 const fromZhWord = (z: ZhWord): Cand => ({
   code: z.code,
   text: z.zh,
-  v: { type: "zhword", v: z },
+  v: { type: "zhword", v: z, hans: getGlobalImeState().cache.getHans(z.zh) },
 })
 
 // interface ImeConfig {
@@ -840,8 +727,11 @@ export class Cache {
     //   storage.getCodes(),
     // ])
 
+    console.log("start Cache.init()")
     const hans = await storage.getHans()
+    console.log("getHans() end")
     const codes = await storage.getCodes()
+    console.log("getCodes() end")
 
     this.hans = hans.sort((a, b) => a.zh.localeCompare(b.zh))
     this.codes = codes.sort(compareItems)
@@ -849,12 +739,14 @@ export class Cache {
 
     this.rebuildHansMap()
     this.isLoaded = true
-    console.log("Cache.init()", {
-      hans: this.hans,
-      codes: this.codes,
-      // words: this.words,
-      hansMap: this.hansMap,
-    })
+    // console.log("Cache.init()", {
+    //   hans: this.hans,
+    //   codes: this.codes,
+    //   // words: this.words,
+    //   hansMap: this.hansMap,
+    // })
+
+    console.log("Cache.init() finished!")
   }
 
   private rebuildHansMap() {
@@ -888,11 +780,12 @@ export class Cache {
 
   async getWordsByCode(inputCode: string): Promise<ZhWord[]> {
     if (!inputCode) return []
-    const prefix = inputCode.slice(0, 2)
+    const prefix = inputCode.slice(0, PREFIX_MAX_LEN)
 
     // まだメモリに乗っていなければ GM_getValue で読み込む
     if (!this.loadedWordChunks.has(prefix)) {
-      const chunk = await GM_getValue<ZhWord[]>(`words_prefix_${prefix}`, [])
+      const raws = await GM_getValue(`words_prefix_${prefix}`, [])
+      const chunk = raws.map(r => restoreCode(r))
       this.loadedWordChunks.set(prefix, chunk)
     }
 
@@ -940,7 +833,7 @@ export class Cache {
     //   storage.setWords,
     // )
 
-    const prefix = newWord.code.slice(0, 2)
+    const prefix = newWord.code.slice(0, PREFIX_MAX_LEN)
 
     // 1. ストレージに保存
     await storage.addWord(newWord)
@@ -1133,28 +1026,54 @@ export interface ImeState {
   selectedIndexMax: number
 }
 
-export const globalImeState: ImeState = {
-  active: true,
-  lastRemained: true,
-  schema: "cqkm",
-  cache: new Cache(),
-  inputHistory: [],
-  buffer: "",
-  candidates: [],
-  endPos: 0,
-  selectedIndex: 0,
-  startPos: 0,
-  target: null,
-  schemaHistory: [],
-  selectedIndexMax: 20,
+// export const globalImeState: ImeState = {
+//   active: true,
+//   lastRemained: true,
+//   schema: "cqkm",
+//   cache: new Cache(),
+//   inputHistory: [],
+//   buffer: "",
+//   candidates: [],
+//   endPos: 0,
+//   selectedIndex: 0,
+//   startPos: 0,
+//   target: null,
+//   schemaHistory: [],
+//   selectedIndexMax: 20,
+// }
+
+// const state = globalImeState
+
+// ime.ts
+
+let _globalImeState: ImeState | null = null
+
+export const getGlobalImeState = (): ImeState => {
+  if (!_globalImeState) {
+    _globalImeState = {
+      active: true,
+      lastRemained: true,
+      schema: "cqkm",
+      cache: new Cache(), // 初めて getGlobalImeState() が呼ばれた時にだけ実行される
+      inputHistory: [],
+      buffer: "",
+      candidates: [],
+      endPos: 0,
+      selectedIndex: 0,
+      startPos: 0,
+      target: null,
+      schemaHistory: [],
+      selectedIndexMax: 20,
+    }
+  }
+  return _globalImeState
 }
 
-const state = globalImeState
+export const getImeState = () => ({ ...getGlobalImeState() })
+// export const initializeCache = () => state.cache.init()
 
-export const getImeState = () => ({ ...state })
-export const initializeCache = () => state.cache.init()
-
-export const isImeCandidateVisible = () => state.candidates.length > 0
+export const isImeCandidateVisible = () =>
+  getGlobalImeState().candidates.length > 0
 
 export class InlineSuggestPopup {
   private el: HTMLDivElement
@@ -1183,6 +1102,7 @@ export class InlineSuggestPopup {
     selectedIndex: number,
     // _optionNumbers: number,
   ) {
+    const state = getGlobalImeState()
     // console.log("coords", coords)
     if (state.candidates.length === 0) {
       this.hide()
@@ -1324,15 +1244,16 @@ export class InlineSuggestPopup {
 
 export const inlinePopup = new InlineSuggestPopup()
 
-export const launchIME = async () => {
-  console.log("AutoControl.launchIME")
+// export const launchIME = async () => {
+//   console.log("AutoControl.launchIME")
 
-  state.cache.init()
-  console.log("initial IME state", state)
-}
+//   state.cache.init()
+//   console.log("initial IME state", state)
+// }
 
 export type ImeStoreValueType = "hans" | "codes" | "words"
 export const imeInitializeGM = async (type: ImeStoreValueType) => {
+  const state = getGlobalImeState()
   if (type === "hans") {
     const url = prompt("Hanzi[] json URL")
     if (!url) return
