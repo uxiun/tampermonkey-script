@@ -8,6 +8,7 @@ import { getSuffixes } from "./keys"
 import {
   Cand,
   getGlobalImeState,
+  Hanzi,
   // getHans,
   // globalImeState,
   hanziInfo,
@@ -17,7 +18,9 @@ import {
   // putWordsIDB,
   Schema,
   zaoci,
+  ZhCode,
 } from "@/features/ime"
+import { exportWordsBackup } from "./ime-storage"
 
 type InputElement = HTMLInputElement | HTMLTextAreaElement
 
@@ -284,6 +287,7 @@ export const onTabLoadIME = async () => {
         e.preventDefault()
         e.stopImmediatePropagation()
         setSchema("hiragana")
+        return
       }
 
       if (e.ctrlKey && e.key === "Backspace") {
@@ -323,6 +327,7 @@ export const onTabLoadIME = async () => {
           state.candidates.splice(state.selectedIndex, 1)
           renderWidget()
         }
+        return
       }
 
       if (e.ctrlKey && e.key === "o") {
@@ -333,17 +338,33 @@ export const onTabLoadIME = async () => {
           showToast(JSON.stringify(selected))
           console.log(selected)
         }
+        return
+      }
+
+      if (e.ctrlKey && e.key === "s") {
+        e.preventDefault()
+        e.stopImmediatePropagation()
+        await exportWordsBackup()
+        return
       }
 
       if (e.ctrlKey && e.key === ";") {
         e.preventDefault()
         e.stopImmediatePropagation()
         multiZaociPrompt()
+        return
       }
       if (e.ctrlKey && e.key === "d") {
         e.preventDefault()
         e.stopImmediatePropagation()
         zaociPrompt(2)
+        return
+      }
+      if (e.ctrlKey && e.key === "e") {
+        e.preventDefault()
+        e.stopImmediatePropagation()
+        await addCodeHanziPrompt()
+        return
       }
 
       if (e.shiftKey || e.altKey || e.ctrlKey || e.metaKey) return
@@ -407,11 +428,13 @@ export const onTabLoadIME = async () => {
           e.stopImmediatePropagation()
           if (e.key === "ArrowDown") {
             const i = state.selectedIndex + 1
-            state.selectedIndex = i % state.selectedIndexMax
+            state.selectedIndex =
+              i % Math.min(state.selectedIndexMax, state.candidates.length)
           }
           if (e.key === "ArrowUp") {
             const i = state.selectedIndex - 1
-            state.selectedIndex = i % state.selectedIndexMax
+            state.selectedIndex =
+              i % Math.min(state.selectedIndexMax, state.candidates.length)
           }
           renderWidget()
         }
@@ -763,6 +786,45 @@ export const onTabLoadIME = async () => {
         },
       }
     })
+
+  const addCodeHanziPrompt = async () => {
+    const isCode = confirm("あなたが登録したいのは Code？ それとも漢字？")
+    const zh = prompt(isCode ? "Codeの表記漢字" : "追加したい漢字")
+    if (!zh) return
+
+    if (isCode) {
+      const code = prompt("入力コード")
+      if (!code) return
+      const c: ZhCode = {
+        code,
+        date: new Date(),
+        nth: 0,
+        on: true,
+        schema: state.schema,
+        user: true,
+        zh,
+      }
+      state.cache.updateCode(c)
+    } else {
+      const pinyins = prompt("pin1yin1s 空白区切り")
+      const cj5Text = prompt("cj5 codes 空白区切り")
+      const cqkmForm = prompt("cqkmForm 3文字")
+      const cqkmInitials = prompt("cqkmInitials 空白区切り")
+
+      const h: Hanzi = {
+        zh,
+        date: new Date(),
+        on: true,
+        user: true,
+        cj5: cj5Text?.split("/\s/+") ?? [],
+        cqkmForm,
+        pinyins: pinyins?.split("\s+") ?? [],
+        cqkmInitials: cqkmInitials?.split("\s+") ?? [],
+      }
+
+      state.cache.updateHanzi(h)
+    }
+  }
 }
 
 export const runCommandPrompt = async () => {

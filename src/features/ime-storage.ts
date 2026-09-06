@@ -1,5 +1,6 @@
 import { mergeObjects } from "@/pure/utils"
 import { codewordIsEqual, Hanzi, ZhCode, ZhWord } from "./ime"
+import { showToast } from "@/pure/component"
 
 // ストレージキーを一括管理
 const STORAGE_KEYS = {
@@ -8,12 +9,26 @@ const STORAGE_KEYS = {
   WORDS: "gm_ime_words",
 } as const
 
+// 保存時：Dateオブジェクトならミリ秒（number）にし、stringなら数値化、無ければ現在時刻
 const compact = <T extends ZhCode | ZhWord>(codes: T[]) =>
-  codes.map(c => [c.code, c.date, c.nth, c.on, c.schema, c.user, c.zh])
+  codes.map(c => [
+    c.code,
+    c.date instanceof Date
+      ? c.date.getTime()
+      : c.date
+        ? new Date(c.date).getTime()
+        : Date.now(),
+    c.nth,
+    c.on,
+    c.schema,
+    c.user,
+    c.zh,
+  ])
 
+// 復元時：数値（ミリ秒）や文字列から Date インスタンスを確実に再生成する
 export const restoreCode = (item: any): ZhCode => ({
   code: item[0],
-  date: item[1],
+  date: item[1] ? new Date(item[1]) : new Date(), // ★ ここで Date オブジェクトに復元！
   nth: item[2],
   on: item[3],
   schema: item[4],
@@ -23,7 +38,7 @@ export const restoreCode = (item: any): ZhCode => ({
 
 export const restoreWord = (item: any): ZhWord => ({
   code: item[0],
-  date: item[1],
+  date: item[1] ? new Date(item[1]) : new Date(), // ★ ここで Date オブジェクトに復元！
   nth: item[2],
   on: item[3],
   schema: item[4],
@@ -174,3 +189,37 @@ export const saveCodesByPrefix = async (codes: ZhCode[]) => {
     await GM_setValue(`codes_prefix_${prefix}`, compact(grouped[prefix]))
   }
 }
+
+// 単語データを JSON ファイルとしてローカルに保存する関数
+export const exportWordsBackup = async () => {
+  showToast("単語一覧を出力します")
+  const prefixes = await GM_getValue<string[]>("word_prefixes", [])
+  const allWords: ZhWord[] = []
+
+  for (const prefix of prefixes) {
+    const chunk = await GM_getValue<ZhWord[]>(`words_prefix_${prefix}`, [])
+    if (chunk) allWords.push(...chunk)
+  }
+
+  console.log("単語一覧:", allWords)
+  showToast(`${allWords.length}単語`)
+
+  // JSON 化してダウンロードリンクを生成
+  const blob = new Blob([JSON.stringify(allWords, null, 2)], {
+    type: "application/json",
+  })
+  const url = URL.createObjectURL(blob)
+
+  const a = document.createElement("a")
+  a.href = url
+  a.download = `ime_words_backup_${new Date().toISOString().slice(0, 10)}.json`
+  a.click()
+
+  URL.revokeObjectURL(url)
+}
+
+// export const exportHansCodesBackup = async () => {
+//   const hans = await storage.getHans()
+//   const codes = await storage.getCodes()
+//   const blob = new Blob([JSON.stringify])
+// }

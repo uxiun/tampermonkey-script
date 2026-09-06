@@ -556,7 +556,11 @@ export const multiZaoci = async (words: string[], user: boolean) => {
   }
 
   console.log("zhwords:", zhwords)
-  await saveWordsByPrefix(zhwords)
+  // await saveWordsByPrefix(zhwords)
+  for (const w of zhwords) {
+    await state.cache.updateWord(w)
+  }
+
   await state.cache.reset("words")
   console.log("putWordsIDB DONE")
 }
@@ -1207,7 +1211,7 @@ export class InlineSuggestPopup {
         return candidateTip(cand, isSelected, state.buffer, {
           fontSize: {
             text: "21px",
-            above: "20px",
+            above: "18px",
             below: "12px",
           },
         })

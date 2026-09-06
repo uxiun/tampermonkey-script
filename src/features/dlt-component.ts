@@ -132,9 +132,6 @@ const pinyinDisplay = (cand: Cand, isSelected: boolean) => {
 }
 
 export const candidateTip = (
-  // text: string,
-  // aboveTexts: string[],
-  // belowTexts: string[],
   cand: Cand,
   isSelected = false,
   buffer?: string,
@@ -145,21 +142,30 @@ export const candidateTip = (
     ? `(${cand.suffix})`
     : removePrefix(buffer ?? "", cand.code)
 
-  const belowTexts =
-    cand.v.type === "zhcode" || cand.v.type === "zhword"
-      ? [cand.v.hans.map(h => h.pinyins.at(0)).join(" ")]
-      : []
-
-  const aboveTexts = [remCode]
-
   const defaultOption: CandidateOption = {
     fontSize: {
-      text: "17px",
-      above: "17px",
-      below: "14px",
+      text: "21px",
+      above: "19px",
+      below: "12px",
+      aside: "14px",
     },
     fontFamily: {
+      text: "sans-serif",
       above: "Iosevka NF Regular, monospace",
+      below: "sans-serif",
+      aside: "sans-serif",
+    },
+  }
+
+  // 1. ネストされたオブジェクトを安全にマージ
+  const mergedOption: CandidateOption = {
+    fontSize: {
+      ...defaultOption.fontSize,
+      ...option?.fontSize,
+    },
+    fontFamily: {
+      ...defaultOption.fontFamily,
+      ...option?.fontFamily,
     },
   }
 
@@ -171,23 +177,21 @@ export const candidateTip = (
     ? "0 4px 14px rgba(137, 180, 250, 0.35)"
     : "0 2px 6px rgba(0,0,0,0.3)"
 
-  const mergedOption = {
-    ...defaultOption,
-    ...option,
-  }
+  const aboveTexts = [remCode]
 
+  // 2. CSSプロパティ名を `font-size:` に修正
   const aboveHtml =
     aboveTexts.length === 0
       ? ""
       : `<div style="
-      ${mergedOption.fontSize?.above ? `fontSize: ${mergedOption.fontSize.above};` : ""}
-      ${mergedOption?.fontFamily?.above ? `font-family: ${mergedOption.fontFamily.above};` : ""}
+      ${mergedOption.fontSize?.above ? `font-size: ${mergedOption.fontSize.above};` : ""}
+      ${mergedOption.fontFamily?.above ? `font-family: ${mergedOption.fontFamily.above};` : ""}
       color: ${isSelected ? "rgb(33, 95, 175)" : "#89b4fa"};
       margin-bottom: 2px;
       white-space: nowrap;
       ${isSelected ? "font-weight: bold;" : ""}">
-                ${aboveTexts.join("｜")}
-               </div>`
+        ${aboveTexts.join("｜")}
+      </div>`
 
   const belowContent =
     cand.v.type === "zhcode" || cand.v.type === "zhword"
@@ -199,24 +203,22 @@ export const candidateTip = (
       ? ""
       : `<div style="
       ${mergedOption.fontSize?.below ? `font-size: ${mergedOption.fontSize.below};` : ""}
-      ${mergedOption?.fontFamily?.below ? `font-family: ${mergedOption.fontFamily.below};` : ""}
+      ${mergedOption.fontFamily?.below ? `font-family: ${mergedOption.fontFamily.below};` : ""}
       color: ${isSelected ? "rgb(33, 95, 175)" : "#89b4fa"};
       margin-bottom: 2px;
       white-space: nowrap;
       ${isSelected ? "font-weight: bold;" : ""}">
-                ${belowContent.join("")}
-          </div>`
+        ${belowContent.join("")}
+      </div>`
 
   return `
     <div style="flex: 0 1 auto; min-width: 0; overflow: hidden; padding: 5px 7px; background: ${bg}; border: ${border}; border-radius: 6px; box-shadow: ${boxShadow}; backdrop-filter: blur(4px); transition: all 0.08s ease; max-width: 100%;">
       ${aboveHtml}
-      <div style="color: ${isSelected ? "rgb(19, 24, 41)" : "#cdd6f4"}; white-space: nowrap; text-overflow: ellipsis; overflow: hidden;
-
-      ">
+      <div style="color: ${isSelected ? "rgb(19, 24, 41)" : "#cdd6f4"}; white-space: nowrap; text-overflow: ellipsis; overflow: hidden;">
         <span style="
           margin-right: 5px;
-          ${mergedOption?.fontSize.text ? `font-size: ${mergedOption.fontSize.text};` : ""}
-          ${mergedOption?.fontFamily.text ? `font-family: ${mergedOption.fontFamily.text};` : ""}
+          ${mergedOption.fontSize?.text ? `font-size: ${mergedOption.fontSize.text};` : ""}
+          ${mergedOption.fontFamily?.text ? `font-family: ${mergedOption.fontFamily.text};` : ""}
         ">
           ${cand.text}
         </span>
@@ -224,10 +226,10 @@ export const candidateTip = (
           aside
             ? `
           <span style="
-        font-size: ${option?.fontSize?.aside ?? defaultOption.fontSize.aside};
-        ${defaultOption?.fontFamily?.aside ? `font-family: ${defaultOption.fontFamily.aside};` : ""}
-        opacity: .8;
-        ">${aside}</span>
+            ${mergedOption.fontSize?.aside ? `font-size: ${mergedOption.fontSize.aside};` : ""}
+            ${mergedOption.fontFamily?.aside ? `font-family: ${mergedOption.fontFamily.aside};` : ""}
+            opacity: .8;
+          ">${aside}</span>
           `
             : ""
         }
