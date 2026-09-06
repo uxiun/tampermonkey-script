@@ -5,6 +5,7 @@ import { showToast } from "@/pure/component"
 import {
   PREFIX_MAX_LEN,
   restoreCode,
+  restoreWord,
   saveWordsByPrefix,
   storage,
 } from "./ime-storage"
@@ -580,6 +581,15 @@ type CandVar =
   | { type: "zhword"; v: ZhWord; hans: Hanzi[] }
   | { type: "other"; memo?: string }
 
+export const candIsEqual = (a: Cand, b: Cand): boolean =>
+  a.v.type !== "other" && b.v.type !== "other"
+    ? codewordIsEqual(a.v.v, b.v.v)
+    : a.v.type !== b.v.type
+      ? false
+      : a.text !== b.text
+        ? false
+        : a.code !== b.code
+
 const fromZhCode = (z: ZhCode): Cand => ({
   code: z.code,
   text: z.zh,
@@ -762,6 +772,15 @@ export class Cache {
     }
   }
 
+  async resort(resetKey: string) {
+    this.codes.sort(compareItems)
+
+    for (let i = 0; i < PREFIX_MAX_LEN; i++) {
+      const key = resetKey.slice(0, i + 1)
+      this.loadedWordChunks.delete(key)
+    }
+  }
+
   async reset(type: ImeStoreValueType) {
     if (type === "hans") {
       const hans = await storage.getHans()
@@ -828,23 +847,46 @@ export class Cache {
     )
   }
 
-  async updateWord(newWord: ZhWord) {
-    // await this.upsertItem(
-    //   this.words,
-    //   word,
-    //   (a, b) => a.zh === b.zh && a.code === b.code && a.schema === b.schema,
-    //   compareItems,
-    //   storage.setWords,
-    // )
+  // async updateWord(newWord: ZhWord) {
+  //   // await this.upsertItem(
+  //   //   this.words,
+  //   //   newWord,
+  //   //   (a, b) => a.zh === b.zh && a.code === b.code && a.schema === b.schema,
+  //   //   compareItems,
+  //   //   storage.setWords,
+  //   // )
 
+  //   const prefix = newWord.code.slice(0, PREFIX_MAX_LEN)
+
+  //   // 1. ストレージに保存
+  //   await storage.addWord(newWord)
+
+  //   // 2. オンメモリの Cache も更新（すでにロード済みの場合のみ追加）
+  //   if (this.loadedWordChunks.has(prefix)) {
+  //     this.loadedWordChunks.get(prefix)!.push(newWord)
+  //   }
+  // }
+
+  async updateWord(newWord: ZhWord) {
     const prefix = newWord.code.slice(0, PREFIX_MAX_LEN)
 
-    // 1. ストレージに保存
-    await storage.addWord(newWord)
+    // 1. ストレージの既存データを上書き更新
+    await storage.updateWord(newWord)
 
-    // 2. オンメモリの Cache も更新（すでにロード済みの場合のみ追加）
+    // 2. オンメモリ Cache も上書き更新
     if (this.loadedWordChunks.has(prefix)) {
-      this.loadedWordChunks.get(prefix)!.push(newWord)
+      const chunk = this.loadedWordChunks.get(prefix)!
+      const index = chunk.findIndex(
+        w => w.code === newWord.code && w.zh === newWord.zh,
+      )
+
+      if (index !== -1) {
+        // 既存の要素を上書き
+        chunk[index] = newWord
+      } else {
+        // 存在しない場合のみ追加
+        chunk.push(newWord)
+      }
     }
   }
 
@@ -1055,7 +1097,7 @@ let _globalImeState: ImeState | null = null
 export const getGlobalImeState = (): ImeState => {
   if (!_globalImeState) {
     _globalImeState = {
-      active: true,
+      active: false,
       lastRemained: true,
       schema: "cqkm",
       cache: new Cache(), // 初めて getGlobalImeState() が呼ばれた時にだけ実行される

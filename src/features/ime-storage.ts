@@ -146,6 +146,30 @@ export const storage = {
     const chunk = raws.map(r => restoreWord(r))
     return chunk
   },
+
+  async updateWord(updatedWord: ZhWord): Promise<void> {
+    const prefix = updatedWord.code.slice(0, PREFIX_MAX_LEN)
+    const key = `words_prefix_${prefix}`
+
+    const raws = await GM_getValue(key, [])
+    const currentChunk = raws.map(r => restoreWord(r))
+
+    // code と zh が一致する既存要素のインデックスを探す
+    const index = currentChunk.findIndex(
+      w => w.code === updatedWord.code && w.zh === updatedWord.zh,
+    )
+
+    if (index !== -1) {
+      // 既存要素を上書き（置換）
+      currentChunk[index] = updatedWord
+    } else {
+      // なければ追加
+      currentChunk.push(updatedWord)
+    }
+
+    // チャンクを保存
+    await GM_setValue(key, compact(currentChunk))
+  },
 }
 
 // 初期化時（imeInitializeGM）

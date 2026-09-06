@@ -7,6 +7,7 @@ import { getSuffixes } from "./keys"
 
 import {
   Cand,
+  candIsEqual,
   getGlobalImeState,
   Hanzi,
   // getHans,
@@ -19,8 +20,10 @@ import {
   Schema,
   zaoci,
   ZhCode,
+  ZhWord,
 } from "@/features/ime"
 import { exportWordsBackup } from "./ime-storage"
+import { closeLinkMemo } from "./dlt-link-memo"
 
 type InputElement = HTMLInputElement | HTMLTextAreaElement
 
@@ -39,6 +42,15 @@ export const onTabLoadIME = async () => {
   console.log("just after state.cache.init()")
 
   const keyManager = new KeyManager(40, committedChord => {
+    if (!state.active && isInput()) {
+      if (committedChord[0] === " " && committedChord[1] === "j") {
+        setText("", state.startPos - 2, state.startPos)
+        setState.activate()
+        showToast("IME ON")
+        return
+      }
+    }
+
     if (!state.active || !state.target) return
 
     if (state.schema === "hiragana") {
@@ -126,12 +138,20 @@ export const onTabLoadIME = async () => {
     }
   }
 
-  window.addEventListener("focusout", e => {})
+  window.addEventListener("focusout", e => {
+    setState.resetBuffer()
+  })
 
   window.addEventListener(
     "keyup",
     e => {
       keyManager.onkeyup(e)
+
+      // if (!state.active) {
+      //   if (keyManager.isModifierLRPressed.ShiftLeft) {
+
+      //   }
+      // }
 
       if (!state.active || !isInput()) return
 
@@ -160,6 +180,13 @@ export const onTabLoadIME = async () => {
 
       if (keyManager.isModifierLRPressed.ShiftLeft) {
         if (state.candidates.length > 0) {
+          setState.resetBuffer()
+          return
+        }
+      }
+
+      if (keyManager.isModifierLRPressed.ShiftRight) {
+        if (state.candidates.length > 0) {
           const select = state.candidates[state.selectedIndex]
           if (select.v.type === "zhcode") {
             showToast("単漢字は編集できません")
@@ -187,9 +214,32 @@ export const onTabLoadIME = async () => {
       const target = e.target as InputElement
 
       if (!state.active) {
-        if (isInput() && e.ctrlKey && e.key === "j") {
+        const value = getText(e.target as HTMLElement)
+        // console.log(value?.at(state.startPos))
+        // console.log(`"${value?.slice(0, state.startPos)}`)
+        const doubleSpaced =
+          typeof value === "string" &&
+          (value.length === 0 ||
+            value.endsWith(" ") ||
+            value.endsWith(" \n")) &&
+          e.key === " "
+
+        if ((isInput() && e.ctrlKey && e.key === "j") || doubleSpaced) {
           e.preventDefault()
           e.stopImmediatePropagation()
+          if (doubleSpaced) {
+            console.log("doubleSpaced!")
+            e.target?.dispatchEvent(
+              new KeyboardEvent("keydown", {
+                key: "Backspace",
+                code: "Backspace",
+                bubbles: true,
+                cancelable: true,
+              }),
+            )
+            // if (value.endsWith(" ")) setText("", value.length - 1, value.length)
+            // else setText("", value.length - 2, value.length)
+          }
           setState.activate()
           showToast("IME ON")
           return
@@ -221,6 +271,11 @@ export const onTabLoadIME = async () => {
         e.key === "Home" ||
         e.key === "End"
       ) {
+        if (state.buffer.length > 0) {
+          e.preventDefault()
+          e.stopImmediatePropagation()
+          setState.resetBuffer()
+        }
         return
       }
 
@@ -291,7 +346,9 @@ export const onTabLoadIME = async () => {
       }
 
       if (e.ctrlKey && e.key === "Backspace") {
-        if (isAfterIMEInput(target)) {
+        if (state.candidates.length > 0) {
+          setState.resetBuffer()
+        } else if (isAfterIMEInput(target)) {
           e.preventDefault()
           e.stopImmediatePropagation()
           const n = lastInputText()!.length
@@ -341,7 +398,7 @@ export const onTabLoadIME = async () => {
         return
       }
 
-      if (e.ctrlKey && e.key === "s") {
+      if (e.ctrlKey && e.shiftKey && e.key === "o") {
         e.preventDefault()
         e.stopImmediatePropagation()
         await exportWordsBackup()
@@ -360,7 +417,7 @@ export const onTabLoadIME = async () => {
         zaociPrompt(2)
         return
       }
-      if (e.ctrlKey && e.key === "e") {
+      if (e.ctrlKey && e.shiftKey && e.key === "f") {
         e.preventDefault()
         e.stopImmediatePropagation()
         await addCodeHanziPrompt()
@@ -445,7 +502,9 @@ export const onTabLoadIME = async () => {
         if (state.buffer.length > 0) {
           e.preventDefault()
           e.stopImmediatePropagation()
-          setState.resetBuffer()
+          // setState.resetBuffer()
+          setState.diactivate()
+          showToast("IME OFF")
         }
         return
       }
@@ -453,6 +512,7 @@ export const onTabLoadIME = async () => {
         e.preventDefault()
         e.stopImmediatePropagation()
         setState.resetBuffer()
+        // ;(e.target as HTMLElement).focus()
         return
       }
 
@@ -532,26 +592,37 @@ export const onTabLoadIME = async () => {
     state.inputHistory = [...state.inputHistory, cand]
 
     if (state.selectedIndex > 0) {
-      const i = state.candidates.findIndex(c => c.code === cand.code)
-      const j = state.candidates.findLastIndex(c => c.code === cand.code)
-      if (i < state.selectedIndex) {
-        const cands: Cand[] = state.candidates
-          .slice(i, Math.max(state.selectedIndex, j) + 1)
-          .map((c, i) => {
-            const nth = c.text === cand.text ? 0 : i + 1
-            if (c.v.type === "zhcode" || c.v.type === "zhword") c.v.v.nth = nth
-            return c
-          })
+      // 同じ入力コード（code）を持つ候補だけを抽出
+      const sameCodeCands = state.candidates.filter(c => c.code === cand.code)
+      const selectedCand = state.candidates[state.selectedIndex]
 
-        for (const c of cands) {
-          if (c.v.type === "zhcode") {
-            state.cache.updateCode(c.v.v)
-            // putCodesIDB([c.v.v])
-          } else if (c.v.type === "zhword") {
-            state.cache.updateWord(c.v.v)
-            // putWordsIDB([c.v.v])
+      if (selectedCand && selectedCand.code === cand.code) {
+        // 選択された候補を先頭にし、それ以外を後ろに並べ替える
+        const reordered = [
+          selectedCand,
+          ...sameCodeCands.filter(c => c.text !== selectedCand.text),
+        ]
+
+        // 新しい順序に基づいて nth (0, 1, 2...) を割り当てる
+        const updatedItems: (ZhCode | ZhWord)[] = []
+
+        reordered.forEach((c, index) => {
+          if (c.v.type === "zhcode" || c.v.type === "zhword") {
+            c.v.v.nth = index // ★ 先頭が 0、次が 1, 2... と一意な連番になる
+            updatedItems.push(c.v.v)
+          }
+        })
+
+        // キャッシュ・ストレージの更新
+        for (const item of updatedItems) {
+          if ("schema" in item) {
+            // 型判定に応じて適切な更新関数を呼ぶ
+            state.cache.updateWord(item as ZhWord)
+          } else {
+            state.cache.updateCode(item as ZhCode)
           }
         }
+        state.cache.resort(state.buffer)
       }
     }
 
@@ -614,6 +685,14 @@ export const onTabLoadIME = async () => {
     return (
       "setRangeText" in el && typeof (el as any).setRangeText === "function"
     )
+  }
+
+  function getText(target: HTMLElement) {
+    if (isHTMLInputElement(target)) {
+      return target.value
+    } else if (target.isContentEditable) {
+      return target.textContent
+    }
   }
 
   function setText(text: string, start?: number, end?: number) {
@@ -695,6 +774,7 @@ export const onTabLoadIME = async () => {
 
     updateCandidateRender()
   }
+
   async function updateCandidateRender() {
     if (state.buffer.length === 0) {
       setState.resetBuffer()
@@ -710,32 +790,49 @@ export const onTabLoadIME = async () => {
     const filtered: Cand[] = []
     const needSuffix: Cand[] = []
     const remained: Cand[] = []
-    state.candidates.forEach(cand => {
-      if (cand?.suffix) {
-        const bufferSuffix = state.buffer.slice(cand.suffix.start)
-        const rem = removePrefix(bufferSuffix, cand.suffix.text)
+    state.candidates
+      .filter(c => c.suffix?.text.length !== 0)
+      .forEach(cand => {
+        const bufferSuffix = state.buffer.slice(cand.suffix?.start ?? 0)
+        const rem = removePrefix(bufferSuffix, cand.suffix?.text ?? cand.code)
         if (rem.length === 0) needSuffix.push(cand)
-        else if (rem.length < cand.suffix.text.length) filtered.push(cand)
+        else if (cand.suffix && rem.length < cand.suffix.text.length)
+          filtered.push(cand)
+        // else if (cand.suffix?.text.length === 0) {
+        // return
+        // }
         else remained.push(cand)
-      }
-    })
+      })
 
     console.log("buffer:", state.buffer)
+    console.log({
+      filtered,
+      needSuffix,
+      remained,
+    })
     const searched = await state.cache.prefixSearch(state.schema, state.buffer)
 
     if (needSuffix.length < 2) {
-      state.candidates = [...needSuffix, ...searched]
+      state.candidates = [...filtered, ...needSuffix]
     } else {
       const suffixes = getSuffixes(
         state.buffer ?? "",
         [...filtered, ...remained],
         needSuffix.length - 1,
       )
+      console.log({ suffixes })
+
       const suffixed = applySuffixes(needSuffix, suffixes)
-      state.candidates = [...filtered, ...suffixed, ...searched]
+      console.log({ suffixed })
+      state.candidates = [...filtered, ...suffixed]
     }
 
-    // console.log("state.candidates", state.candidates)
+    for (const c of searched) {
+      if (state.candidates.every(cand => !candIsEqual(cand, c)))
+        state.candidates.push(c)
+    }
+
+    console.log("state.candidates", state.candidates)
     state.selectedIndex = 0
 
     if (state.candidates.length === 0) {

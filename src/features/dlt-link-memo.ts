@@ -31,7 +31,6 @@ import {
   backupUserAdded,
   getImeState,
   importWordsJSONArray,
-  initializeCache,
   // restoreUserAdded,
 } from "./ime"
 
@@ -71,6 +70,12 @@ async function syncIDB(state: AppState) {
 
 export async function syncRenderLinkMemo(links?: PostLink[]) {
   appState.history = links ?? (await getAllLinksFromIDB())
+  renderWidget(appState)
+}
+
+export const closeLinkMemo = () => {
+  if (!appState.isWidgetActive) return
+  appState.isWidgetActive = false
   renderWidget(appState)
 }
 
@@ -459,7 +464,6 @@ export async function startLinkMemo(option: LinkMemoOption) {
           case "t": {
             e.preventDefault()
             e.stopImmediatePropagation()
-            await initializeCache()
             const state = getImeState()
             console.log("ImeState", state)
             showToast(`IME Cache Initilized!`)

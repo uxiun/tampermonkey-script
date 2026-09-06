@@ -139,7 +139,7 @@ export const candidateTip = (
   aside?: string,
 ) => {
   const remCode = cand.suffix
-    ? `(${cand.suffix})`
+    ? `(${cand.suffix.text.slice(cand.suffix.text.length - (cand.code.length + cand.suffix.text.length - (buffer?.length || 0)))})`
     : removePrefix(buffer ?? "", cand.code)
 
   const defaultOption: CandidateOption = {
