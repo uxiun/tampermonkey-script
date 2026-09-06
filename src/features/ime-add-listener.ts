@@ -105,15 +105,15 @@ export const onTabLoadIME = async () => {
       const msg = [`「${t}」の綴`, ...infos, else_msg].join("\n")
       const code = prompt(msg, z?.word.code)
       if (z && code) {
-        state.cache.updateWord({
+        await state.cache.updateWord({
           ...z.word,
-          zh: z.word.zh.replaceAll(/\$space/, " "),
+          zh: z.word.zh.replaceAll(/\$space/g, " "),
           schema: state.schema,
           code,
         })
 
         if (a && else_code && code === z?.word.code) {
-          state.cache.updateWord({
+          await state.cache.updateWord({
             ...z.word,
             zh: z.word.zh,
             schema: a,

@@ -93,25 +93,25 @@ export function getPopupPosition(
 
     const lineHeight = parseFloat(styles.lineHeight) || 20
 
-    return inputEl.getAttribute("id") === "kw"
-      ? {
-          top:
-            rect.top +
-            marker.offsetTop +
-            (parseFloat(styles.lineHeight) || 20) +
-            inputEl.scrollTop,
-          left: rect.left + marker.offsetLeft - inputEl.scrollLeft,
-          lineHeight,
-        }
-      : {
-          top:
-            rect.top +
-            marker.offsetTop +
-            (parseFloat(styles.lineHeight) || 20) +
-            inputEl.scrollTop,
-          left: rect.left + marker.offsetLeft - inputEl.scrollLeft,
-          lineHeight,
-        }
+    // return inputEl.getAttribute("id") === "kw"
+    //   ? {
+    //       top:
+    //         rect.top +
+    //         marker.offsetTop +
+    //         (parseFloat(styles.lineHeight) || 20) +
+    //         inputEl.scrollTop,
+    //       left: rect.left + marker.offsetLeft - inputEl.scrollLeft,
+    //       lineHeight,
+    //     }
+    return {
+      top:
+        rect.top +
+        marker.offsetTop +
+        (parseFloat(styles.lineHeight) || 20) +
+        inputEl.scrollTop,
+      left: rect.left + marker.offsetLeft - inputEl.scrollLeft,
+      lineHeight,
+    }
   }
 
   return _getPopupPosition(inputEl, startPos)
