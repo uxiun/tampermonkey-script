@@ -9,6 +9,7 @@ import {
   saveWordsByPrefix,
   storage,
 } from "./ime-storage"
+import { imeConfigByHostname } from "./ime-trigger"
 
 // const DB_NAME = "ac_ime_db"
 // const DB_VERSION = 2
@@ -87,6 +88,19 @@ export interface ZhWord {
 }
 
 export type Schema = "cj5" | "cqkm" | "cqkmxy" | "hiragana" | "katakana"
+
+export const schemaName = (schema: Schema): string =>
+  schema === "hiragana"
+    ? "ひらがな"
+    : schema === "katakana"
+      ? "カタカナ"
+      : schema === "cqkm"
+        ? "超强快码"
+        : schema === "cqkmxy"
+          ? "超强快码形音"
+          : schema === "cj5"
+            ? "倉頡五代"
+            : schema
 
 const IME_USER_ADDED_BACKUP_PATH = "<documents>/autocontrol-ime-user-added.json"
 interface UserAddedBackup {
@@ -1099,7 +1113,9 @@ let _globalImeState: ImeState | null = null
 export const getGlobalImeState = (): ImeState => {
   if (!_globalImeState) {
     _globalImeState = {
-      active: false,
+      active: imeConfigByHostname.enabledByDefault.includes(
+        window.location.hostname,
+      ),
       lastRemained: true,
       schema: "cqkm",
       cache: new Cache(), // 初めて getGlobalImeState() が呼ばれた時にだけ実行される

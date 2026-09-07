@@ -32,6 +32,11 @@ export function isPromise(value: any) {
   )
 }
 
+export function log<T>(msg: string, e: T) {
+  console.log(msg, e)
+  return e
+}
+
 export function dbg<T>(e: T) {
   console.log(e)
   return e
@@ -98,6 +103,7 @@ export const isInput = () => {
         (activeEl as HTMLElement).isContentEditable),
   )
 }
+
 export const isTopPage = () =>
   window.location.origin + "/" === window.location.href ||
   window.location.origin === window.location.href

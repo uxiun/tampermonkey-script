@@ -18,12 +18,19 @@ import {
   multiZaociPrompt,
   // putWordsIDB,
   Schema,
+  schemaName,
   zaoci,
   ZhCode,
   ZhWord,
 } from "@/features/ime"
 import { exportWordsBackup } from "./ime-storage"
 import { closeLinkMemo } from "./dlt-link-memo"
+import {
+  isHTMLInputElement,
+  noModifiers,
+  triggerBlocked,
+  triggered,
+} from "./ime-trigger"
 
 type InputElement = HTMLInputElement | HTMLTextAreaElement
 
@@ -214,34 +221,13 @@ export const onTabLoadIME = async () => {
       const target = e.target as InputElement
 
       if (!state.active) {
-        const value = getText(e.target as HTMLElement)
-        // console.log(value?.at(state.startPos))
-        // console.log(`"${value?.slice(0, state.startPos)}`)
-        const doubleSpaced =
-          typeof value === "string" &&
-          (value.length === 0 ||
-            value.endsWith(" ") ||
-            value.endsWith(" \n")) &&
-          e.key === " "
-
-        if ((isInput() && e.ctrlKey && e.key === "j") || doubleSpaced) {
+        if (
+          (isInput() && e.ctrlKey && e.key === "j") ||
+          triggered(e, "doubleSpace", "spaceOnLineStart")
+        ) {
           e.preventDefault()
           e.stopImmediatePropagation()
-          if (doubleSpaced) {
-            console.log("doubleSpaced!")
-            e.target?.dispatchEvent(
-              new KeyboardEvent("keydown", {
-                key: "Backspace",
-                code: "Backspace",
-                bubbles: true,
-                cancelable: true,
-              }),
-            )
-            // if (value.endsWith(" ")) setText("", value.length - 1, value.length)
-            // else setText("", value.length - 2, value.length)
-          }
           setState.activate()
-          showToast("IME ON")
           return
         }
       }
@@ -255,7 +241,6 @@ export const onTabLoadIME = async () => {
         e.preventDefault()
         e.stopImmediatePropagation()
         setState.diactivate()
-        showToast("IME OFF")
         return
       }
 
@@ -292,7 +277,8 @@ export const onTabLoadIME = async () => {
       }
 
       if (state.schema === "hiragana") {
-        if (!e.shiftKey && e.key === " ") {
+        if (!noModifiers) return
+        if (e.key === " ") {
           e.preventDefault()
           e.stopImmediatePropagation()
           const schema = lastZhSchema() ?? "cqkm"
@@ -305,9 +291,7 @@ export const onTabLoadIME = async () => {
       }
 
       if (state.schema === "katakana") {
-        if (e.shiftKey && e.key === " ") {
-          return
-        }
+        if (!noModifiers(e)) return
 
         if (e.key === " ") {
           e.preventDefault()
@@ -411,11 +395,29 @@ export const onTabLoadIME = async () => {
         multiZaociPrompt()
         return
       }
+
       if (e.ctrlKey && e.key === "d") {
+        e.preventDefault()
+        e.stopImmediatePropagation()
+        multiZaociPrompt("set user true", lastNInputText(2))
+        return
+      }
+
+      if (e.ctrlKey && e.shiftKey && e.key === "f") {
+        e.preventDefault()
+        e.stopImmediatePropagation()
+        await addCodeHanziPrompt()
+        return
+      }
+
+      if (e.shiftKey || e.altKey || e.ctrlKey || e.metaKey) return
+      // 以下は全て単打
+
+      if (e.key === ";") {
         if (state.buffer.length === 0) {
           e.preventDefault()
           e.stopImmediatePropagation()
-          multiZaociPrompt("set user true", lastNInputText(2))
+          await zaociPrompt(2)
         } else {
           if (state.schema === "cqkm") {
             e.preventDefault()
@@ -429,22 +431,6 @@ export const onTabLoadIME = async () => {
         }
         return
       }
-      if (e.ctrlKey && e.shiftKey && e.key === "f") {
-        e.preventDefault()
-        e.stopImmediatePropagation()
-        await addCodeHanziPrompt()
-        return
-      }
-
-      if (e.shiftKey || e.altKey || e.ctrlKey || e.metaKey) return
-      // 以下は全て単打
-
-      if (e.key === ";") {
-        e.preventDefault()
-        e.stopImmediatePropagation()
-        await zaociPrompt(2)
-        return
-      }
 
       if (e.key === " ") {
         if (state.candidates.length > 0) {
@@ -455,7 +441,9 @@ export const onTabLoadIME = async () => {
         } else {
           e.preventDefault()
           e.stopImmediatePropagation()
-          setSchema("hiragana")
+          if (triggered(e, "doubleSpace", "spaceOnLineStart"))
+            setState.diactivate()
+          else setSchema("hiragana")
         }
         return
       }
@@ -645,11 +633,13 @@ export const onTabLoadIME = async () => {
     activate: () => {
       state.active = true
       setState.resetBuffer()
+      showToast(schemaName(state.schema))
     },
 
     diactivate: () => {
       state.active = false
       setState.resetBuffer()
+      showToast("IME OFF")
     },
 
     resetBuffer: () => {
@@ -677,22 +667,6 @@ export const onTabLoadIME = async () => {
     const last = lastInputText()
     if (!last) return false
     return target.value.slice(0, state.startPos).endsWith(last)
-  }
-
-  function isHTMLInputElement(
-    el: HTMLElement,
-  ): el is HTMLInputElement | HTMLTextAreaElement {
-    return (
-      "setRangeText" in el && typeof (el as any).setRangeText === "function"
-    )
-  }
-
-  function getText(target: HTMLElement) {
-    if (isHTMLInputElement(target)) {
-      return target.value
-    } else if (target.isContentEditable) {
-      return target.textContent
-    }
   }
 
   function setText(text: string, start?: number, end?: number) {
@@ -756,21 +730,7 @@ export const onTabLoadIME = async () => {
   function setSchema(schema: Schema) {
     state.schemaHistory.push(state.schema)
     state.schema = schema
-    showToast(
-      `${
-        state.schema === "hiragana"
-          ? "ひらがな"
-          : state.schema === "katakana"
-            ? "カタカナ"
-            : state.schema === "cqkm"
-              ? "超强快码"
-              : state.schema === "cqkmxy"
-                ? "超强快码形音"
-                : state.schema === "cj5"
-                  ? "倉頡五代"
-                  : state.schema
-      }`,
-    )
+    showToast(schemaName(state.schema))
 
     updateCandidateRender()
   }
