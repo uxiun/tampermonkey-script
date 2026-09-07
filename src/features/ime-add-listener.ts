@@ -122,7 +122,11 @@ export const onTabLoadIME = async () => {
       const else_msg = else_code.length > 0 ? `(${else_code}: [${a}]) &` : ""
 
       const msg = [`「${t}」の綴`, ...infos, else_msg].join("\n")
-      const code = prompt(msg, z?.word.code)
+      const code = prompt(msg, z?.word.code)?.trim()
+      if (code && !/^([a-z.,;/-]|\$\|)+$/.test(code)) {
+        showToast(`無効な綴の形式です（有効: /^([a-z.,;/-]|\$\|)+$/ ）`)
+        return
+      }
       if (z && code) {
         await state.cache.updateWord({
           ...z.word,
@@ -139,6 +143,16 @@ export const onTabLoadIME = async () => {
             code: else_code,
           })
         }
+      } else if (code) {
+        state.cache.updateWord({
+          code,
+          zh: t,
+          schema: state.schema,
+          date: new Date(),
+          nth: 0,
+          on: true,
+          user: true,
+        })
       }
     } else {
       zaociPrompt(i)
@@ -582,51 +596,35 @@ export const onTabLoadIME = async () => {
     if (state.selectedIndex > 0) {
       // 同じ入力コード（code）を持つ候補だけを抽出
       const sameCodeCands = state.candidates.filter(c => c.code === cand.code)
-      const selectedCand = state.candidates[state.selectedIndex]
 
-      if (selectedCand && selectedCand.code === cand.code) {
-        // 選択された候補を先頭にし、それ以外を後ろに並べ替える
-        const reordered = [
-          selectedCand,
-          ...sameCodeCands.filter(c => c.text !== selectedCand.text),
-        ]
+      // 選択された候補を先頭にし、それ以外を後ろに並べ替える
+      const reordered = [
+        cand,
+        ...sameCodeCands.filter(c => !candIsEqual(c, cand)),
+      ]
 
-        // 新しい順序に基づいて nth (0, 1, 2...) を割り当てる
-        const updatedItems: (ZhCode | ZhWord)[] = []
+      // 新しい順序に基づいて nth (0, 1, 2...) を割り当てる
+      const updatedItems: Cand[] = []
 
-        reordered.forEach((c, index) => {
-          if (c.v.type === "zhcode" || c.v.type === "zhword") {
-            c.v.v.nth = index // ★ 先頭が 0、次が 1, 2... と一意な連番になる
-            updatedItems.push(c.v.v)
-          }
-        })
-
-        // キャッシュ・ストレージの更新
-        for (const item of updatedItems) {
-          if ("schema" in item) {
-            // 型判定に応じて適切な更新関数を呼ぶ
-            state.cache.updateWord(item as ZhWord)
-          } else {
-            state.cache.updateCode(item as ZhCode)
-          }
+      reordered.forEach((c, index) => {
+        if (c.v.type === "zhcode" || c.v.type === "zhword") {
+          c.v.v.nth = index // ★ 先頭が 0、次が 1, 2... と一意な連番になる
+          updatedItems.push(c)
         }
-        state.cache.resort(state.buffer)
+      })
+
+      // キャッシュ・ストレージの更新
+      for (const item of updatedItems) {
+        if (item.v.type === "zhword") {
+          // 型判定に応じて適切な更新関数を呼ぶ
+          state.cache.updateWord(item.v.v)
+        } else if (item.v.type === "zhcode") {
+          state.cache.updateCode(item.v.v)
+        }
       }
     }
 
     setState.resetBuffer()
-
-    // if (
-    //   state.schema === "cj5" ||
-    //   state.schema === "cqkm" ||
-    //   state.schema === "cqkmxy"
-    // ) {
-    //   const hans = state.cache.getHans(cand.text)
-    //   coords.top -= coords.lineHeight + 32
-    //   coords.left -= 5
-
-    //   showToastAt(hans.map(hanziInfo).join("  "), coords, 3000, 299999)
-    // }
   }
 
   const setState = {
@@ -673,55 +671,117 @@ export const onTabLoadIME = async () => {
     const target = state.target
     if (!target) return
 
-    // 1. 標準の input / textarea の場合
+    // --- 1. $| の位置特定と除去 ---
+    const cursorMarker = "$|"
+    const cursorIndex = text.indexOf(cursorMarker)
+
+    let insertText = text
+    if (cursorIndex !== -1) {
+      insertText = text.replace(cursorMarker, "")
+    }
+
+    // 1. 標準の input / textarea の場合 (演算子の優先順位バグを修正: start ?? (state.startPos + cursorIndex))
     if (isHTMLInputElement(target)) {
       target.setRangeText(
-        text,
+        insertText,
         start ?? state.startPos,
         end ?? state.endPos,
         "end",
       )
       target.dispatchEvent(new Event("input", { bubbles: true }))
+
+      if (cursorIndex !== -1) {
+        const basePos = start ?? state.startPos
+        const targetCursorPos = basePos + cursorIndex
+        target.setSelectionRange(targetCursorPos, targetCursorPos)
+        state.startPos = targetCursorPos
+        state.endPos = targetCursorPos
+        return
+      }
       state.startPos = target.selectionStart ?? 0
       state.endPos = target.selectionEnd ?? 0
       return
     }
 
-    // 2. Dynalist 等の ContentEditable 要素の場合
+    // 2. contentEditable 要素の場合
     if (target.isContentEditable) {
       target.focus()
 
-      // ブラウザの Selection API で選択範囲を取得・操作する
       const sel = window.getSelection()
       if (sel && sel.rangeCount > 0) {
-        // 選択されている（または変換対象の）テキストを削除して挿入
-        // ※ execCommand("insertText") を使うと Undo (Ctrl+Z) 履歴が壊れず安全です
-        const success = document.execCommand("insertText", false, text)
+        const range = sel.getRangeAt(0)
 
-        // execCommand が非推奨で動かない環境向けのフォールバック (Range API)
+        // 挿入前の開始ノードとオフセットを取得
+        const startContainer = range.startContainer
+        const startOffset = range.startOffset
+
+        // テキストの挿入 (execCommand は Ctrl+Z 履歴が維持されるため優先)
+        const success = document.execCommand("insertText", false, insertText)
+
         if (!success) {
-          const range = sel.getRangeAt(0)
+          // execCommand が効かない場合のフォールバック (Range API)
           range.deleteContents()
-          const textNode = document.createTextNode(text)
+          const textNode = document.createTextNode(insertText)
           range.insertNode(textNode)
 
-          // カーソルを挿入したテキストの直後に移動
-          range.setStartAfter(textNode)
-          range.setEndAfter(textNode)
-          sel.removeAllRanges()
-          sel.addRange(range)
+          if (cursorIndex !== -1) {
+            // Range API で挿入したテキストノード内でカーソルを移動
+            const newRange = document.createRange()
+            newRange.setStart(textNode, cursorIndex)
+            newRange.collapse(true)
+            sel.removeAllRanges()
+            sel.addRange(newRange)
+          } else {
+            // 末尾へ移動
+            range.setStartAfter(textNode)
+            range.setEndAfter(textNode)
+            sel.removeAllRanges()
+            sel.addRange(range)
+          }
+        } else if (cursorIndex !== -1) {
+          // execCommand 成功時の $| カーソル移動処理
+          // 挿入されたテキストが既存テキストノード内に結合されているか確認して位置特定
+          try {
+            const currentRange = sel.getRangeAt(0)
+            const node = currentRange.startContainer // 現在カーソルがあるテキストノード
+
+            // 対象ノードがテキストノードである場合
+            if (node.nodeType === Node.TEXT_NODE) {
+              // execCommand 実行後、現在のキャレット位置は「挿入文字列の直後」にあるため、
+              // (挿入後位置 - 除去した文字数 + cursorIndex) で目的地を逆算
+              const currentOffset = currentRange.startOffset
+              const targetOffset =
+                currentOffset - insertText.length + cursorIndex
+
+              if (
+                targetOffset >= 0 &&
+                targetOffset <= (node.nodeValue?.length ?? 0)
+              ) {
+                const newRange = document.createRange()
+                newRange.setStart(node, targetOffset)
+                newRange.collapse(true) // 開始位置にキャレットを折りたたむ
+                sel.removeAllRanges()
+                sel.addRange(newRange)
+              }
+            }
+          } catch (e) {
+            console.error(
+              "Failed to set selection range in contentEditable:",
+              e,
+            )
+          }
         }
       } else {
-        // キャレットがない場合は末尾に追加
-        target.textContent += text
+        // キャレットがない場合
+        target.textContent += insertText
       }
 
-      // 変更イベントを通知（Dynalist 側に文字入力を認識させる）
+      // 変更イベントを通知（Dynalist 等の React/Vue アプリに認識させる）
       target.dispatchEvent(
         new InputEvent("input", {
           bubbles: true,
           inputType: "insertText",
-          data: text,
+          data: insertText,
         }),
       )
     }
@@ -749,15 +809,30 @@ export const onTabLoadIME = async () => {
 
     // const lastCandidates: Cand[] = []
 
+    const suffixed = state.candidates.filter(
+      c => c.suffix && c.suffix.text.length > 0,
+    )
+    const searched = (
+      await state.cache.prefixSearch(state.schema, state.buffer)
+    ).filter(c => suffixed.every(suff => !candIsEqual(c, suff)))
+
     const filtered: Cand[] = []
     const needSuffix: Cand[] = []
     const remained: Cand[] = []
-    state.candidates
+    // state.candidates
+
+    const target = [...suffixed, ...searched]
+
+    target
       .filter(c => c.suffix?.text.length !== 0)
       .forEach(cand => {
         const bufferSuffix = state.buffer.slice(cand.suffix?.start ?? 0)
         const rem = removePrefix(bufferSuffix, cand.suffix?.text ?? cand.code)
-        if (rem.length === 0) needSuffix.push(cand)
+        if (
+          rem.length === 0
+          // || cand.suffix?.start === state.buffer.length
+        )
+          needSuffix.push(cand)
         else if (cand.suffix && rem.length < cand.suffix.text.length)
           filtered.push(cand)
         // else if (cand.suffix?.text.length === 0) {
@@ -772,11 +847,12 @@ export const onTabLoadIME = async () => {
       needSuffix,
       remained,
     })
-    const searched = await state.cache.prefixSearch(state.schema, state.buffer)
+
+    // const searched = await state.cache.prefixSearch(state.schema, state.buffer)
     let candidates: Cand[] = []
 
     if (needSuffix.length < 2) {
-      candidates = [...filtered, ...needSuffix]
+      candidates = [...filtered, ...needSuffix, ...remained]
     } else {
       const suffixes = getSuffixes(
         state.buffer ?? "",
@@ -787,12 +863,12 @@ export const onTabLoadIME = async () => {
 
       const suffixed = applySuffixes(needSuffix, suffixes)
       console.log({ suffixed })
-      candidates = [...filtered, ...suffixed]
+      candidates = [...filtered, ...suffixed, ...remained]
     }
 
-    for (const c of searched) {
-      if (candidates.every(cand => !candIsEqual(cand, c))) candidates.push(c)
-    }
+    // for (const c of searched) {
+    //   if (candidates.every(cand => !candIsEqual(cand, c))) candidates.push(c)
+    // }
 
     console.log("candidates", candidates)
     state.selectedIndex = 0

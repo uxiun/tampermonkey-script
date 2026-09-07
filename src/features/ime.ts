@@ -451,6 +451,7 @@ export async function backupUserAdded() {
 export async function zaoci(
   schema: Schema,
   zh: string,
+  defaultCode?: string,
   // exceptionOption: ExceptionOption = "skip",
 ) {
   const state = getGlobalImeState()
@@ -479,7 +480,7 @@ export async function zaoci(
     }
 
     const w: ZhWord = {
-      code: "",
+      code: defaultCode ?? "",
       // hans: hs,
       nth: 0,
       schema,
@@ -789,8 +790,6 @@ export class Cache {
   }
 
   async resort(resetKey: string) {
-    this.codes.sort(compareItems)
-
     for (let i = 0; i < PREFIX_MAX_LEN; i++) {
       const key = resetKey.slice(0, i + 1)
       this.loadedWordChunks.delete(key)
@@ -863,26 +862,6 @@ export class Cache {
     )
   }
 
-  // async updateWord(newWord: ZhWord) {
-  //   // await this.upsertItem(
-  //   //   this.words,
-  //   //   newWord,
-  //   //   (a, b) => a.zh === b.zh && a.code === b.code && a.schema === b.schema,
-  //   //   compareItems,
-  //   //   storage.setWords,
-  //   // )
-
-  //   const prefix = newWord.code.slice(0, PREFIX_MAX_LEN)
-
-  //   // 1. ストレージに保存
-  //   await storage.addWord(newWord)
-
-  //   // 2. オンメモリの Cache も更新（すでにロード済みの場合のみ追加）
-  //   if (this.loadedWordChunks.has(prefix)) {
-  //     this.loadedWordChunks.get(prefix)!.push(newWord)
-  //   }
-  // }
-
   async updateWord(newWord: ZhWord) {
     const prefix = newWord.code.slice(0, PREFIX_MAX_LEN)
 
@@ -921,18 +900,7 @@ export class Cache {
   }
 
   async hideWord(word: ZhWord) {
-    const updated = { ...word, on: false }
-    const prefix = updated.code.slice(0, 2)
-
-    await storage.addWord(updated)
-
-    if (this.loadedWordChunks.has(prefix)) {
-      const chunk = this.loadedWordChunks.get(prefix)!
-      const idx = chunk.findIndex(w => codewordIsEqual(w, word))
-      if (idx !== -1) {
-        chunk[idx] = updated
-      }
-    }
+    await this.updateWord({ ...word, on: false })
   }
 
   // （prefixSearch や getHans はそのまま）
@@ -989,12 +957,11 @@ export class Cache {
       else prefixMatchedWords.push(w)
     }
 
-    prefixMatchedCodes.sort((a, b) =>
+    prefixMatchedWords.sort((a, b) =>
       a.code.length === b.code.length
         ? a.code.localeCompare(b.code)
         : a.code.length - b.code.length,
     )
-
     prefixMatchedWords.sort((a, b) =>
       a.code.length === b.code.length
         ? a.code.localeCompare(b.code)

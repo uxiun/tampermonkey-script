@@ -100,10 +100,10 @@ const pinyinDisplay = (cand: Cand, isSelected: boolean) => {
 
   const toneColors = [
     ["rgb(85, 81, 81)", "rgb(219, 219, 219)"],
-    ["rgb(255, 56, 56)", "rgb(239, 255, 92)"],
-    ["rgb(148, 0, 141)", "rgb(251, 135, 255)"],
+    ["rgb(194, 36, 83)", "rgb(239, 255, 92)"],
+    ["rgb(148, 0, 141)", "rgb(252, 168, 255)"],
     ["rgb(33, 95, 175)", "rgb(114, 246, 255)"],
-    ["rgb(11, 141, 11)", "rgb(139, 255, 178)"],
+    ["rgb(3, 90, 3)", "rgb(139, 255, 178)"],
   ]
 
   const pinyinSpan = (pinyin: string, isSelected: boolean) => {
