@@ -848,11 +848,23 @@ export const onTabLoadIME = async () => {
       remained,
     })
 
+    const nextLength: Cand[] = []
+    const remainedLength: Cand[] = []
+    for (const cand of remained) {
+      if (cand.code.length === state.buffer.length + 1) nextLength.push(cand)
+      else remainedLength.push(cand)
+    }
+
     // const searched = await state.cache.prefixSearch(state.schema, state.buffer)
     let candidates: Cand[] = []
 
     if (needSuffix.length < 2) {
-      candidates = [...filtered, ...needSuffix, ...remained]
+      candidates = [
+        ...filtered,
+        ...needSuffix,
+        ...nextLength,
+        ...remainedLength,
+      ]
     } else {
       const suffixes = getSuffixes(
         state.buffer ?? "",
@@ -863,7 +875,7 @@ export const onTabLoadIME = async () => {
 
       const suffixed = applySuffixes(needSuffix, suffixes)
       console.log({ suffixed })
-      candidates = [...filtered, ...suffixed, ...remained]
+      candidates = [...filtered, ...suffixed, ...nextLength, ...remainedLength]
     }
 
     // for (const c of searched) {
