@@ -101,30 +101,29 @@ const pinyinDisplay = (cand: Cand, isSelected: boolean) => {
   const toneColors = [
     ["rgb(85, 81, 81)", "rgb(219, 219, 219)"],
     ["rgb(194, 36, 83)", "rgb(239, 255, 92)"],
-    ["rgb(148, 0, 141)", "rgb(252, 168, 255)"],
-    ["rgb(33, 95, 175)", "rgb(114, 246, 255)"],
-    ["rgb(3, 90, 3)", "rgb(139, 255, 178)"],
+    ["rgb(171, 42, 197)", "rgb(252, 168, 255)"],
+    ["rgb(22, 127, 197)", "rgb(114, 246, 255)"],
+    ["rgb(11, 119, 11)", "rgb(139, 255, 178)"],
   ]
 
   const pinyinSpan = (pinyin: string, isSelected: boolean) => {
     let tone = 0
     const n = pinyin.at(-1)
+    let withoutTone = pinyin
+
     if (n) {
       const t = parseInt(n, 10)
-      if (!Number.isNaN(tone)) tone = t
+      if (!Number.isNaN(tone)) {
+        tone = t
+        withoutTone = pinyin.slice(0, -1)
+      }
     }
 
     const [selected, notselected] = toneColors.at(tone) ?? toneColors[0]
 
     const color = isSelected ? selected : notselected
 
-    return `
-      <span style="
-        color: ${color};
-      ">
-        ${pinyin}
-      </span>
-    `
+    return `<span style="color: ${color};">${withoutTone}</span>`
   }
 
   return hans.map(h => pinyinSpan(h.pinyins[0], isSelected))
@@ -139,7 +138,7 @@ export const candidateTip = (
   aside?: string,
 ) => {
   const remCode = cand.suffix
-    ? `(${cand.suffix.text.slice(cand.suffix.text.length - (cand.code.length + cand.suffix.text.length - (buffer?.length || 0)))})`
+    ? `(${cand.suffix.code.slice(cand.suffix.code.length - (cand.code.length + cand.suffix.code.length - (buffer?.length || 0)))})`
     : removePrefix(buffer ?? "", cand.code)
 
   const defaultOption: CandidateOption = {

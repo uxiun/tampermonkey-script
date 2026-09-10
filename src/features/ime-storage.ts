@@ -55,9 +55,6 @@ export async function saveStorage<T>(key: string, data: T[]): Promise<void> {
   GM_setValue(key, data)
 }
 
-// 1キーあたりのチャンクサイズ（例: 5000件ずつ分割）
-// const CHUNK_SIZE = 5000
-
 export const PREFIX_MAX_LEN = 3
 
 // 外部に公開する API はこれだけで OK

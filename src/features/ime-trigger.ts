@@ -1,5 +1,3 @@
-import { isInput } from "@/pure/utils"
-
 export type Trigger = "doubleSpace" | "spaceOnLineStart"
 
 export const imeConfigByHostname = {
@@ -7,8 +5,8 @@ export const imeConfigByHostname = {
 }
 
 const disableRulesByHostname: Record<Trigger, string[]> = {
-  doubleSpace: [],
-  spaceOnLineStart: [],
+  doubleSpace: ["scrapbox.io"],
+  spaceOnLineStart: ["scrapbox.io"],
 }
 
 export const triggerDef: Record<Trigger, (e: KeyboardEvent) => boolean> = {

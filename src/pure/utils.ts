@@ -107,3 +107,18 @@ export const isInput = () => {
 export const isTopPage = () =>
   window.location.origin + "/" === window.location.href ||
   window.location.origin === window.location.href
+
+export const exportJson = (filenamePrefix: string, saveTarget: any) => {
+  // JSON 化してダウンロードリンクを生成
+  const blob = new Blob([JSON.stringify(saveTarget, null, 2)], {
+    type: "application/json",
+  })
+  const url = URL.createObjectURL(blob)
+
+  const a = document.createElement("a")
+  a.href = url
+  a.download = `${filenamePrefix}-${new Date().toISOString().slice(0, 10)}.json`
+  a.click()
+
+  URL.revokeObjectURL(url)
+}

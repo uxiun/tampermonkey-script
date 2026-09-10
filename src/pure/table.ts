@@ -91,6 +91,7 @@ export const KANA_TABLE: [string, string][] = [
   ["sv", "ぽ"],
   ["d.", "ゔ"],
   ["fr", "・"],
+  ["f;", "げ"],
   ["jw", "ぶ"],
   ["je", "を"],
   ["jr", "。"],

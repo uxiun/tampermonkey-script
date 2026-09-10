@@ -1,4 +1,4 @@
-import { mergeObjects, transpose } from "@/pure/utils"
+import { exportJson, mergeObjects, transpose } from "@/pure/utils"
 import { candidateTip } from "./dlt-component"
 import { Key, Single } from "@/pure/key"
 import { showToast } from "@/pure/component"
@@ -142,76 +142,82 @@ interface UserAddedBackup {
 //   showToast(msg)
 // }
 
-export async function backupUserAdded() {
-  const backup: UserAddedBackup = await ACtl.getFile(
-    IME_USER_ADDED_BACKUP_PATH,
-    "json",
-  ).catch(async _err => {
-    const res = await ACtl.saveFile(
-      IME_USER_ADDED_BACKUP_PATH,
-      JSON.stringify({
-        codes: [],
-        words: [],
-        hans: [],
-      }),
-    )
-
-    if (res) {
-      showToast(`${res}に新しく作成しました。もう一度試してください`)
-      return
-    } else {
-      showToast(
-        `初期化できませんでした。${IME_USER_ADDED_BACKUP_PATH}を作成してください`,
-      )
-    }
-  })
-
-  // const db = await openDB()
-
-  // const words = await new Promise<ZhWord[]>((resolve, reject) => {
-  //   const tx = db.transaction(STORE_WORD, "readonly")
-  //   const store = tx.objectStore(STORE_WORD)
-  //   // const user = store.index("user")
-  //   // const req = user.getAll(IDBKeyRange.bound(true, true))
-
-  //   const req: IDBRequest<ZhWord[]> = store.getAll()
-
-  //   req.onsuccess = () => resolve(req.result.filter(w => w.user))
-  //   req.onerror = () => reject(req.error)
-  // })
-
-  // const codes = (await getAllCodesFromIDB()).filter(w => w.user)
-
-  // const hans = (await getAllHansFromIDB()).filter(w => w.user)
-
+export async function exportUserChanged() {
+  console.log("exportUserChanged()")
   const hans = await storage.getHans()
   const codes = await storage.getCodes()
-  // const words = await storage.()
+  const prefixes = await GM_getValue<string[]>("word_prefixes", [])
+  const allWords: ZhWord[] = []
+
+  for (const prefix of prefixes) {
+    const chunk = await GM_getValue(`words_prefix_${prefix}`, [])
+    if (chunk) allWords.push(...chunk.map(restoreWord))
+  }
+
+  const hansChanged = hans.filter(h => h.user)
+  const changed = (x: { nth: number; user: boolean }) => x.user || x.nth > 0
+  const codesChanged = codes.filter(changed)
+  const wordsChanged = allWords.filter(changed)
 
   console.log({
-    backup,
-    hans,
-    codes,
-    // words,
+    hansChanged,
+    codesChanged,
+    wordsChanged,
   })
 
-  backup.codes = mergeObjects([...backup.codes, ...codes], [...CODE_KEYPATH])
-  // backup.words = mergeObjects([...backup.words, ...words], [...CODE_KEYPATH])
-  backup.hans = mergeObjects([...backup.hans, ...hans], ["zh"])
-
-  console.log("merged: ", backup)
-
-  const res = await ACtl.saveFile(
-    IME_USER_ADDED_BACKUP_PATH,
-    JSON.stringify(backup),
-  )
-
-  const msg = res
-    ? `保存成功 (${backup.words.length}語 ${backup.codes.length}字 ${backup.hans.length}漢字) ${res}`
-    : `保存失敗！ ${IME_USER_ADDED_BACKUP_PATH}`
-
-  showToast(msg)
+  if (hansChanged.length) exportJson("hansChanged", hansChanged)
+  if (codesChanged.length) exportJson("codesChanged", codesChanged)
+  if (wordsChanged.length) exportJson("wordsChanged", wordsChanged)
 }
+
+// export async function backupUserChanged() {
+//   const backup: UserAddedBackup = await ACtl.getFile(
+//     IME_USER_ADDED_BACKUP_PATH,
+//     "json",
+//   ).catch(async _err => {
+//     const res = await ACtl.saveFile(
+//       IME_USER_ADDED_BACKUP_PATH,
+//       JSON.stringify({
+//         codes: [],
+//         words: [],
+//         hans: [],
+//       }),
+//     )
+
+//     if (res) {
+//       showToast(`${res}に新しく作成しました。もう一度試してください`)
+//       return
+//     } else {
+//       showToast(
+//         `初期化できませんでした。${IME_USER_ADDED_BACKUP_PATH}を作成してください`,
+//       )
+//     }
+//   })
+
+//   console.log({
+//     backup,
+//     hans,
+//     codes,
+//     // words,
+//   })
+
+//   backup.codes = mergeObjects([...backup.codes, ...codes], [...CODE_KEYPATH])
+//   // backup.words = mergeObjects([...backup.words, ...words], [...CODE_KEYPATH])
+//   backup.hans = mergeObjects([...backup.hans, ...hans], ["zh"])
+
+//   console.log("merged: ", backup)
+
+//   const res = await ACtl.saveFile(
+//     IME_USER_ADDED_BACKUP_PATH,
+//     JSON.stringify(backup),
+//   )
+
+//   const msg = res
+//     ? `保存成功 (${backup.words.length}語 ${backup.codes.length}字 ${backup.hans.length}漢字) ${res}`
+//     : `保存失敗！ ${IME_USER_ADDED_BACKUP_PATH}`
+
+//   showToast(msg)
+// }
 
 // export async function getZhCode(
 //   schema: Schema,
@@ -587,7 +593,7 @@ export interface Cand {
   text: string
   code: string
   suffix?: {
-    text: string
+    code: string
     start: number
   }
   v: CandVar
@@ -959,12 +965,12 @@ export class Cache {
 
     prefixMatchedWords.sort((a, b) =>
       a.code.length === b.code.length
-        ? a.code.localeCompare(b.code)
+        ? compareItems(a, b)
         : a.code.length - b.code.length,
     )
     prefixMatchedWords.sort((a, b) =>
       a.code.length === b.code.length
-        ? a.code.localeCompare(b.code)
+        ? compareItems(a, b)
         : a.code.length - b.code.length,
     )
 
@@ -975,10 +981,16 @@ export class Cache {
       prefixMatchedWords,
     })
 
-    // 完全一致 -> 前方一致の順で結合して返却
-    return [
+    const matched = [
       ...matchedCodes.map(fromZhCode),
       ...matchedWords.map(fromZhWord),
+    ].sort((a, b) =>
+      a.v.type !== "other" && b.v.type !== "other" ? a.v.v.nth - b.v.v.nth : 0,
+    )
+
+    // 完全一致 -> 前方一致の順で結合して返却
+    return [
+      ...matched,
       ...prefixMatchedCodes.map(fromZhCode),
       ...prefixMatchedWords.map(fromZhWord),
     ]

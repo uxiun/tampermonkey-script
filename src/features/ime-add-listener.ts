@@ -8,6 +8,7 @@ import { getSuffixes } from "./keys"
 import {
   Cand,
   candIsEqual,
+  exportUserChanged,
   getGlobalImeState,
   Hanzi,
   // getHans,
@@ -130,9 +131,6 @@ export const onTabLoadIME = async () => {
       if (z && code) {
         await state.cache.updateWord({
           ...z.word,
-          zh: z.word.zh.replaceAll(/\$space/g, " "),
-          schema: state.schema,
-          code,
         })
 
         if (a && else_code && code === z?.word.code) {
@@ -278,7 +276,27 @@ export const onTabLoadIME = async () => {
         return
       }
 
+      if (state.schema === "hiragana") {
+        if ((noModifiers(e) && e.key === " ") || (e.ctrlKey && e.key === "i")) {
+          e.preventDefault()
+          e.stopImmediatePropagation()
+          const schema = lastZhSchema() ?? "cqkm"
+          setSchema(schema)
+
+          return
+        }
+      }
+
+      if (state.schema === "katakana") {
+        if ((noModifiers(e) && e.key === " ") || (e.ctrlKey && e.key === "i")) {
+          e.preventDefault()
+          e.stopImmediatePropagation()
+          setSchema("hiragana")
+        }
+      }
+
       if (state.schema === "hiragana" || state.schema === "katakana") {
+        if (!noModifiers(e)) return
         if (
           KANA_TABLE.map(row => row[0])
             .join("")
@@ -287,30 +305,6 @@ export const onTabLoadIME = async () => {
           e.preventDefault()
           e.stopImmediatePropagation()
           keyManager.onkeydownChord(e)
-        }
-      }
-
-      if (state.schema === "hiragana") {
-        if (!noModifiers) return
-        if (e.key === " ") {
-          e.preventDefault()
-          e.stopImmediatePropagation()
-          const schema = lastZhSchema() ?? "cqkm"
-          setSchema(schema)
-
-          return
-        }
-
-        return
-      }
-
-      if (state.schema === "katakana") {
-        if (!noModifiers(e)) return
-
-        if (e.key === " ") {
-          e.preventDefault()
-          e.stopImmediatePropagation()
-          setSchema("hiragana")
         }
         return
       }
@@ -336,7 +330,7 @@ export const onTabLoadIME = async () => {
         return
       }
 
-      if (e.ctrlKey && (e.key === " " || e.key === "i")) {
+      if (e.ctrlKey && e.key === "i") {
         e.preventDefault()
         e.stopImmediatePropagation()
         setSchema("hiragana")
@@ -396,11 +390,22 @@ export const onTabLoadIME = async () => {
         return
       }
 
-      if (e.ctrlKey && e.shiftKey && e.key === "o") {
-        e.preventDefault()
-        e.stopImmediatePropagation()
-        await exportWordsBackup()
-        return
+      if (e.ctrlKey && e.key === "s") {
+        if (state.candidates.length) {
+          e.preventDefault()
+          e.stopImmediatePropagation()
+          await exportUserChanged()
+          return
+        }
+      }
+
+      if (e.ctrlKey && e.key === "p") {
+        if (state.candidates.length) {
+          e.preventDefault()
+          e.stopImmediatePropagation()
+          await exportWordsBackup()
+          return
+        }
       }
 
       if (e.ctrlKey && e.key === ";") {
@@ -476,7 +481,7 @@ export const onTabLoadIME = async () => {
           e.preventDefault()
           e.stopImmediatePropagation()
           state.buffer = state.buffer.slice(0, -1)
-          updateCandidateRender()
+          updateCandidateRender(true)
         }
         return
       }
@@ -795,7 +800,7 @@ export const onTabLoadIME = async () => {
     updateCandidateRender()
   }
 
-  async function updateCandidateRender() {
+  async function updateCandidateRender(backwards = false) {
     if (state.buffer.length === 0) {
       setState.resetBuffer()
       return
@@ -809,11 +814,25 @@ export const onTabLoadIME = async () => {
 
     // const lastCandidates: Cand[] = []
 
-    const suffixed = state.candidates.filter(
-      c => c.suffix && c.suffix.text.length > 0,
-    )
+    let suffixed = []
+    let onlySuffixed = state.candidates.length > 0
+    for (const cand of state.candidates) {
+      if (cand.suffix) {
+        if (cand.suffix.code.length > 0) suffixed.push(cand)
+      } else {
+        onlySuffixed = false
+        break
+      }
+    }
+
+    // const suffixed = state.candidates.filter(
+    //   c => c.suffix && c.suffix.code.length > 0,
+    // )
+
     const searched = (
-      await state.cache.prefixSearch(state.schema, state.buffer)
+      onlySuffixed && !backwards
+        ? []
+        : await state.cache.prefixSearch(state.schema, state.buffer)
     ).filter(c => suffixed.every(suff => !candIsEqual(c, suff)))
 
     const filtered: Cand[] = []
@@ -824,21 +843,25 @@ export const onTabLoadIME = async () => {
     const target = [...suffixed, ...searched]
 
     target
-      .filter(c => c.suffix?.text.length !== 0)
+      .filter(c => c.suffix?.code.length !== 0)
       .forEach(cand => {
         const bufferSuffix = state.buffer.slice(cand.suffix?.start ?? 0)
-        const rem = removePrefix(bufferSuffix, cand.suffix?.text ?? cand.code)
-        if (
-          rem.length === 0
-          // || cand.suffix?.start === state.buffer.length
-        )
-          needSuffix.push(cand)
-        else if (cand.suffix && rem.length < cand.suffix.text.length)
-          filtered.push(cand)
-        // else if (cand.suffix?.text.length === 0) {
-        // return
-        // }
-        else remained.push(cand)
+        const code = cand.suffix?.code ?? cand.code
+        if (code.startsWith(bufferSuffix)) {
+          if (code.length === bufferSuffix.length) needSuffix.push(cand)
+          else if (cand.suffix) filtered.push(cand)
+          else remained.push(cand)
+        }
+
+        // const rem = removePrefix(bufferSuffix, cand.suffix?.text ?? cand.code)
+        // if (
+        //   rem.length === 0
+        //   // || cand.suffix?.start === state.buffer.length
+        // )
+        //   needSuffix.push(cand)
+        // else if (cand.suffix && rem.length < cand.suffix.code.length)
+        //   filtered.push(cand)
+        // else if (rem.length < cand.code.length) remained.push(cand)
       })
 
     console.log("buffer:", state.buffer)
@@ -948,7 +971,7 @@ export const onTabLoadIME = async () => {
       return {
         ...cand,
         suffix: {
-          text: suffix ?? "",
+          code: suffix ?? "",
           start: state.buffer.length,
         },
       }
