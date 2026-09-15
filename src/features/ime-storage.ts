@@ -166,8 +166,16 @@ export const storage = {
 
     // チャンクを保存
     await GM_setValue(key, compact(currentChunk))
+
+    const prefixes = await GM_getValue<string[]>("word_prefixes", [])
+    if (!prefixes.includes(key)) {
+      prefixes.push(key)
+      GM_setValue("word_prefixes", prefixes)
+    }
   },
 }
+
+export const getAllPrefix = async () => {}
 
 // 初期化時（imeInitializeGM）
 export const saveWordsByPrefix = async (words: ZhWord[]) => {

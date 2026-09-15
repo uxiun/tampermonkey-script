@@ -277,7 +277,7 @@ export const onTabLoadIME = async () => {
       }
 
       if (state.schema === "hiragana") {
-        if ((noModifiers(e) && e.key === " ") || (e.ctrlKey && e.key === "i")) {
+        if ((noModifiers(e) && e.key === " ") || (e.ctrlKey && e.key === "h")) {
           e.preventDefault()
           e.stopImmediatePropagation()
           const schema = lastZhSchema() ?? "cqkm"
@@ -330,7 +330,7 @@ export const onTabLoadIME = async () => {
         return
       }
 
-      if (e.ctrlKey && e.key === "i") {
+      if (e.ctrlKey && e.key === "h") {
         e.preventDefault()
         e.stopImmediatePropagation()
         setSchema("hiragana")
@@ -467,7 +467,7 @@ export const onTabLoadIME = async () => {
         return
       }
 
-      if (e.key === "Enter") {
+      if (e.key === "Enter" || e.key === "Tab") {
         if (state.candidates.length > 0) {
           e.preventDefault()
           e.stopImmediatePropagation()
@@ -505,16 +505,17 @@ export const onTabLoadIME = async () => {
         return
       }
 
-      if (e.key === "Tab") {
-        if (state.buffer.length > 0) {
-          e.preventDefault()
-          e.stopImmediatePropagation()
-          // setState.resetBuffer()
-          setState.diactivate()
-          showToast("IME OFF")
-        }
-        return
-      }
+      // if (e.key === "Tab") {
+      //   if (state.buffer.length > 0) {
+      //     e.preventDefault()
+      //     e.stopImmediatePropagation()
+      //     // setState.resetBuffer()
+      //     setState.diactivate()
+      //     showToast("IME OFF")
+      //   }
+      //   return
+      // }
+
       if (e.key === "Escape" && state.buffer.length > 0) {
         e.preventDefault()
         e.stopImmediatePropagation()
@@ -524,7 +525,7 @@ export const onTabLoadIME = async () => {
       }
 
       if (state.schema === "cqkm" || state.schema === "cqkmxy") {
-        const isCodeRange = /[a-z.,]/.test(e.key)
+        const isCodeRange = /^[a-z.,]$/.test(e.key)
         if (state.buffer.length === 0) {
           if (e.key === "q") {
             e.preventDefault()
@@ -573,7 +574,7 @@ export const onTabLoadIME = async () => {
   console.log("set keydown listener")
 
   function renderWidget() {
-    if (!state.active || !state.target || state.candidates.length === 0) {
+    if (!state.active || !state.target) {
       inlinePopup.hide()
       return
     }
@@ -910,7 +911,8 @@ export const onTabLoadIME = async () => {
 
     if (candidates.length === 0) {
       if (state.candidates.length === 0) {
-        setState.resetBuffer()
+        state.candidates = []
+        // setState.resetBuffer()
       } else {
         // 1. 最後の打鍵（最後の1文字）を退避
         const lastChar = state.buffer.slice(-1)

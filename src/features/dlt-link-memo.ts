@@ -28,7 +28,7 @@ import { dltShortcuts } from "./dlt-shortcuts"
 import outlinerShortcuts from "./dlt-outliner"
 import { isImeActive } from "./dlt-ime"
 import {
-  backupUserAdded,
+  exportUserChanged,
   getImeState,
   importWordsJSONArray,
   // restoreUserAdded,
@@ -450,7 +450,7 @@ export async function startLinkMemo(option: LinkMemoOption) {
           case "s": {
             e.preventDefault()
             e.stopImmediatePropagation()
-            await backupUserAdded()
+            await exportUserChanged()
             break
           }
 

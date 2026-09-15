@@ -829,11 +829,14 @@ export class Cache {
     // まだメモリに乗っていなければ GM_getValue で読み込む
     if (!this.loadedWordChunks.has(prefix)) {
       const raws = await GM_getValue(`words_prefix_${prefix}`, [])
-      const chunk = raws.map(r => restoreCode(r))
+      const chunk = raws.map(r => restoreWord(r))
       this.loadedWordChunks.set(prefix, chunk)
     }
 
     const words = this.loadedWordChunks.get(prefix) ?? []
+
+    if (prefix.startsWith("a")) console.log({ words })
+
     // 入力コードに前方一致する単語を返す
     return words.filter(w => w.code.startsWith(inputCode))
   }
@@ -1126,7 +1129,7 @@ export class InlineSuggestPopup {
     this.el.id = "ac-inline-ime-popup"
     Object.assign(this.el.style, {
       position: "fixed",
-      zIndex: "300000",
+      zIndex: "300000", // autocontrol/dlt-ime は 100000
       background: "transparent",
       border: "none",
       boxShadow: "none",
@@ -1147,7 +1150,8 @@ export class InlineSuggestPopup {
   ) {
     const state = getGlobalImeState()
     // console.log("coords", coords)
-    if (state.candidates.length === 0) {
+
+    if (state.buffer.length === 0) {
       this.hide()
       return
     }
@@ -1243,6 +1247,11 @@ export class InlineSuggestPopup {
         },
         true,
         state.buffer,
+        {
+          fontFamily: {
+            text: "Iosevka NF Regular, monospace",
+          },
+        },
       ),
       ...state.candidates.slice(0, state.selectedIndexMax).map((cand, idx) => {
         const isSelected = idx === selectedIndex
