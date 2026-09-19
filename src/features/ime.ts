@@ -556,7 +556,7 @@ export const importWordsJSONArray = async () => {
 
 export const multiZaoci = async (words: string[], user: boolean) => {
   const state = getGlobalImeState()
-  let zhwords: ZhWord[] = []
+  const zhwords: ZhWord[] = []
 
   // for (const s of spells.slice(0, 20)) {
   //   const w = await zaoci("cqkm", s.zh)
@@ -587,6 +587,16 @@ export const multiZaoci = async (words: string[], user: boolean) => {
 
   await state.cache.reset("words")
   console.log("putWordsIDB DONE")
+}
+
+export interface CandSuffixed {
+  text: string
+  code: string
+  suffix: {
+    code: string
+    start: number
+  }
+  v: CandVar
 }
 
 export interface Cand {
@@ -941,8 +951,9 @@ export class Cache {
     return list.slice(startIndex, endIndex)
   }
 
-  async prefixSearch(schema: Schema, prefix: string): Promise<Cand[]> {
-    if (!prefix) return []
+  async prefixSearch(schema: Schema, prefix: string) {
+    // : Promise<Cand[]>
+    if (!prefix) return null
 
     // 1. 二分探索で該当する prefix のアイテム範囲だけを O(log N) で一括抽出
     const targetCodes = this.getPrefixRange(this.codes, schema, prefix)
@@ -992,11 +1003,19 @@ export class Cache {
     )
 
     // 完全一致 -> 前方一致の順で結合して返却
-    return [
-      ...matched,
-      ...prefixMatchedCodes.map(fromZhCode),
-      ...prefixMatchedWords.map(fromZhWord),
-    ]
+    // return [
+    //   ...matched,
+    //   ...prefixMatchedCodes.map(fromZhCode),
+    //   ...prefixMatchedWords.map(fromZhWord),
+    // ]
+
+    return {
+      exactMatch: matched,
+      prefixMatch: [
+        ...prefixMatchedCodes.map(fromZhCode),
+        ...prefixMatchedWords.map(fromZhWord),
+      ],
+    }
   }
 
   /**

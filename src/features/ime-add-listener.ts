@@ -8,6 +8,7 @@ import { getSuffixes } from "./keys"
 import {
   Cand,
   candIsEqual,
+  CandSuffixed,
   exportUserChanged,
   getGlobalImeState,
   Hanzi,
@@ -467,7 +468,7 @@ export const onTabLoadIME = async () => {
         return
       }
 
-      if (e.key === "Enter" || e.key === "Tab") {
+      if (e.key === "Enter") {
         if (state.candidates.length > 0) {
           e.preventDefault()
           e.stopImmediatePropagation()
@@ -505,16 +506,16 @@ export const onTabLoadIME = async () => {
         return
       }
 
-      // if (e.key === "Tab") {
-      //   if (state.buffer.length > 0) {
-      //     e.preventDefault()
-      //     e.stopImmediatePropagation()
-      //     // setState.resetBuffer()
-      //     setState.diactivate()
-      //     showToast("IME OFF")
-      //   }
-      //   return
-      // }
+      if (e.key === "Tab") {
+        if (state.buffer.length > 0) {
+          e.preventDefault()
+          e.stopImmediatePropagation()
+          // setState.resetBuffer()
+          commit()
+          setState.diactivate()
+        }
+        return
+      }
 
       if (e.key === "Escape" && state.buffer.length > 0) {
         e.preventDefault()
@@ -806,105 +807,65 @@ export const onTabLoadIME = async () => {
       setState.resetBuffer()
       return
     }
-    // const exact = state.cache.codes.filter(
-    //   z => z.schema === state.schema && z.code === state.buffer,
-    // )
-    // const prefixed = state.cache.codes
-    //   .filter(z => z.schema === state.schema && z.code.startsWith(state.buffer))
-    //   .slice(exact.length)
 
-    // const lastCandidates: Cand[] = []
-
-    let suffixed = []
-    let onlySuffixed = state.candidates.length > 0
-    for (const cand of state.candidates) {
-      if (cand.suffix) {
-        if (cand.suffix.code.length > 0) suffixed.push(cand)
-      } else {
-        onlySuffixed = false
-        break
-      }
-    }
-
-    // const suffixed = state.candidates.filter(
-    //   c => c.suffix && c.suffix.code.length > 0,
-    // )
-
-    const searched = (
-      onlySuffixed && !backwards
-        ? []
-        : await state.cache.prefixSearch(state.schema, state.buffer)
-    ).filter(c => suffixed.every(suff => !candIsEqual(c, suff)))
+    const suffixed = state.candidates.filter(
+      c => c.suffix?.code.length,
+    ) as CandSuffixed[]
 
     const filtered: Cand[] = []
-    const needSuffix: Cand[] = []
-    const remained: Cand[] = []
-    // state.candidates
+    const exactMatch: Cand[] = []
 
-    const target = [...suffixed, ...searched]
-
-    target
-      .filter(c => c.suffix?.code.length !== 0)
-      .forEach(cand => {
-        const bufferSuffix = state.buffer.slice(cand.suffix?.start ?? 0)
-        const code = cand.suffix?.code ?? cand.code
-        if (code.startsWith(bufferSuffix)) {
-          if (code.length === bufferSuffix.length) needSuffix.push(cand)
-          else if (cand.suffix) filtered.push(cand)
-          else remained.push(cand)
-        }
-
-        // const rem = removePrefix(bufferSuffix, cand.suffix?.text ?? cand.code)
-        // if (
-        //   rem.length === 0
-        //   // || cand.suffix?.start === state.buffer.length
-        // )
-        //   needSuffix.push(cand)
-        // else if (cand.suffix && rem.length < cand.suffix.code.length)
-        //   filtered.push(cand)
-        // else if (rem.length < cand.code.length) remained.push(cand)
-      })
-
-    console.log("buffer:", state.buffer)
-    console.log({
-      filtered,
-      needSuffix,
-      remained,
+    suffixed.forEach(cand => {
+      const bufferSuffix = state.buffer.slice(cand.suffix.start)
+      if (bufferSuffix && cand.suffix.code.startsWith(bufferSuffix)) {
+        if (cand.suffix.code.length === bufferSuffix.length)
+          exactMatch.push(cand)
+        else filtered.push(cand)
+      }
     })
+
+    const searched = (await state.cache.prefixSearch(
+      state.schema,
+      state.buffer,
+    ))!
+
+    exactMatch.push(...searched.exactMatch)
 
     const nextLength: Cand[] = []
     const remainedLength: Cand[] = []
-    for (const cand of remained) {
+    for (const cand of searched.prefixMatch) {
       if (cand.code.length === state.buffer.length + 1) nextLength.push(cand)
       else remainedLength.push(cand)
     }
 
-    // const searched = await state.cache.prefixSearch(state.schema, state.buffer)
+    const needSuffix = exactMatch.slice(1)
     let candidates: Cand[] = []
 
-    if (needSuffix.length < 2) {
+    if (needSuffix.length === 0) {
       candidates = [
+        ...exactMatch,
         ...filtered,
-        ...needSuffix,
         ...nextLength,
         ...remainedLength,
       ]
     } else {
       const suffixes = getSuffixes(
         state.buffer ?? "",
-        [...filtered, ...remained],
-        needSuffix.length - 1,
+        [...filtered, ...searched.prefixMatch],
+        needSuffix.length,
       )
       console.log({ suffixes })
 
       const suffixed = applySuffixes(needSuffix, suffixes)
       console.log({ suffixed })
-      candidates = [...filtered, ...suffixed, ...nextLength, ...remainedLength]
+      candidates = [
+        ...exactMatch.slice(0, 1),
+        ...filtered,
+        ...suffixed,
+        ...nextLength,
+        ...remainedLength,
+      ]
     }
-
-    // for (const c of searched) {
-    //   if (candidates.every(cand => !candIsEqual(cand, c))) candidates.push(c)
-    // }
 
     console.log("candidates", candidates)
     state.selectedIndex = 0
@@ -912,7 +873,6 @@ export const onTabLoadIME = async () => {
     if (candidates.length === 0) {
       if (state.candidates.length === 0) {
         state.candidates = []
-        // setState.resetBuffer()
       } else {
         // 1. 最後の打鍵（最後の1文字）を退避
         const lastChar = state.buffer.slice(-1)
@@ -940,8 +900,8 @@ export const onTabLoadIME = async () => {
   const applySuffixes = (candidates: Cand[], suffixes: string[]): Cand[] =>
     candidates.map((cand, i) => {
       const suffix =
-        i === 0
-          ? cand.v.type === "zhword" && !cand.suffix
+        cand.v.type === "zhword"
+          ? !cand.suffix
             ? state.schema === "cqkm"
               ? state.cache
                   .getHans(cand.text)
@@ -953,22 +913,8 @@ export const onTabLoadIME = async () => {
                     .map(h => h.cqkmForm?.slice(3))
                     .join("")
                 : suffixes.pop()
-            : ""
-          : cand.v.type === "zhword"
-            ? !cand.suffix
-              ? state.schema === "cqkm"
-                ? state.cache
-                    .getHans(cand.text)
-                    .map(h => h.cqkmForm?.slice(2))
-                    .join("")
-                : state.schema === "cqkmxy"
-                  ? state.cache
-                      .getHans(cand.text)
-                      .map(h => h.cqkmForm?.slice(3))
-                      .join("")
-                  : suffixes.pop()
-              : suffixes.pop()
             : suffixes.pop()
+          : suffixes.pop()
 
       return {
         ...cand,

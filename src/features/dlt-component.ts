@@ -137,9 +137,12 @@ export const candidateTip = (
   option?: Partial<CandidateOption>,
   aside?: string,
 ) => {
-  const remCode = cand.suffix
-    ? `(${cand.suffix.code.slice(cand.suffix.code.length - (cand.code.length + cand.suffix.code.length - (buffer?.length || 0)))})`
-    : removePrefix(buffer ?? "", cand.code)
+  const aboveTexts = cand.suffix
+    ? (() => {
+        const code = `${cand.suffix.code.slice(cand.suffix.code.length - (cand.code.length + cand.suffix.code.length - (buffer?.length || 0)))}`
+        return code ? [`(${code})`] : []
+      })()
+    : [removePrefix(buffer ?? "", cand.code)]
 
   const defaultOption: CandidateOption = {
     fontSize: {
@@ -175,8 +178,6 @@ export const candidateTip = (
   const boxShadow = isSelected
     ? "0 4px 14px rgba(137, 180, 250, 0.35)"
     : "0 2px 6px rgba(0,0,0,0.3)"
-
-  const aboveTexts = [remCode]
 
   // 2. CSSプロパティ名を `font-size:` に修正
   const aboveHtml =
