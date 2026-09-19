@@ -1,3 +1,5 @@
+import { getCursorSurroundingText } from "@/pure/dom"
+
 export type Trigger = "doubleSpace" | "spaceOnLineStart"
 
 export const imeConfigByHostname = {
@@ -11,12 +13,17 @@ const disableRulesByHostname: Record<Trigger, string[]> = {
 
 export const triggerDef: Record<Trigger, (e: KeyboardEvent) => boolean> = {
   doubleSpace: e => {
-    const value = getText(e.target as HTMLElement)
-    if (typeof value !== "string") return false
+    // const value = getText(e.target as HTMLElement)
+    // if (typeof value !== "string") return false
+    // return (
+    //   (value.endsWith(" ") || value.endsWith(" \n")) &&
+    //   e.key === " " &&
+    //   noModifiers(e)
+    // )
+
+    const surroundingText = getCursorSurroundingText(e.target as HTMLElement)
     return (
-      (value.endsWith(" ") || value.endsWith(" \n")) &&
-      e.key === " " &&
-      noModifiers(e)
+      surroundingText.before.endsWith(" ") && e.key === " " && noModifiers(e)
     )
   },
 

@@ -87,7 +87,30 @@ export interface ZhWord {
   user: boolean // user added or not
 }
 
-export type Schema = "cj5" | "cqkm" | "cqkmxy" | "hiragana" | "katakana"
+// export type Schema = "cj5" | "cqkm" | "cqkmxy" | "hiragana" | "katakana"
+export const ALL_SCHEMA = [
+  "cj5",
+  "cqkm",
+  "cqkmxy",
+  "hiragana",
+  "katakana",
+] as const
+export type Schema = (typeof ALL_SCHEMA)[number]
+export function isSchema(value: string): boolean {
+  return ALL_SCHEMA.includes(value as any)
+}
+export type SchemaActive = "on" | "off" | Schema
+export function isSchemaActive(value: string): boolean {
+  return isSchema(value) || ["on", "off"].includes(value)
+}
+
+export const schemaActiveRegex = /\$([a-z0-9]+)/g
+
+// export const toSchemaActive: Record<string, SchemaActive> = {
+//   h: "hiragana",
+//   k: "katakana",
+//   c: ""
+// }
 
 export const schemaName = (schema: Schema): string =>
   schema === "hiragana"
@@ -1136,6 +1159,10 @@ export const getGlobalImeState = (): ImeState => {
 
 export const getImeState = () => ({ ...getGlobalImeState() })
 // export const initializeCache = () => state.cache.init()
+
+export const setImeState = (state: ImeState) => {
+  _globalImeState = state
+}
 
 export const isImeCandidateVisible = () =>
   getGlobalImeState().candidates.length > 0

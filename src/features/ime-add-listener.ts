@@ -1,7 +1,7 @@
-import { isInput, removePrefix } from "@/pure/utils"
-import { getPopupPosition } from "@/pure/dom"
+import { isInput } from "@/pure/utils"
+import { checkCursorSurroundingText, getPopupPosition } from "@/pure/dom"
 import { KeyManager } from "@/pure/key"
-import { showToast, showToastAt } from "@/pure/component"
+import { showToast } from "@/pure/component"
 import { kana, KANA_TABLE, katakana } from "@/pure/table"
 import { getSuffixes } from "./keys"
 
@@ -16,23 +16,20 @@ import {
   // globalImeState,
   hanziInfo,
   imeInitializeGM,
+  ImeState,
   InlineSuggestPopup,
+  isSchemaActive,
   multiZaociPrompt,
   // putWordsIDB,
   Schema,
+  SchemaActive,
+  schemaActiveRegex,
   schemaName,
   zaoci,
   ZhCode,
-  ZhWord,
 } from "@/features/ime"
 import { exportWordsBackup } from "./ime-storage"
-import { closeLinkMemo } from "./dlt-link-memo"
-import {
-  isHTMLInputElement,
-  noModifiers,
-  triggerBlocked,
-  triggered,
-} from "./ime-trigger"
+import { isHTMLInputElement, noModifiers, triggered } from "./ime-trigger"
 
 type InputElement = HTMLInputElement | HTMLTextAreaElement
 
@@ -41,6 +38,42 @@ export const onTabLoadIME = async () => {
   ;(window as any).__ac_ime__ = true
   // ;(window as any).__ime_state__ = globalImeState
 
+  class TemporalSchema {
+    private next: SchemaActive | null = null
+    private ready(_e: KeyboardEvent, _state: ImeState) {
+      return false
+    }
+
+    check(current: ImeState, e: KeyboardEvent) {
+      if (this.ready(e, current) && this.next) {
+        applySchemaActive(this.next)
+        this.reset()
+      }
+    }
+
+    reset() {
+      this.ready = (_e, _) => false
+      this.next = null
+    }
+
+    byCursorSurroundingText = (
+      text: string,
+      checkBeforeCursor: boolean,
+      nextSchema: SchemaActive,
+    ) => {
+      this.ready = (e, _state) => {
+        return checkCursorSurroundingText(
+          text,
+          checkBeforeCursor,
+          e.target as HTMLElement,
+        )
+      }
+
+      this.next = nextSchema
+    }
+  }
+
+  const temporalSchema = new TemporalSchema()
   console.log("onTabLoadIME")
   // const state = globalImeState
   const state = getGlobalImeState()
@@ -132,6 +165,7 @@ export const onTabLoadIME = async () => {
       if (z && code) {
         await state.cache.updateWord({
           ...z.word,
+          code,
         })
 
         if (a && else_code && code === z?.word.code) {
@@ -230,6 +264,7 @@ export const onTabLoadIME = async () => {
     "keydown",
     async e => {
       keyManager.onkeydown(e)
+      temporalSchema.check(state, e)
 
       const target = e.target as InputElement
 
@@ -655,6 +690,12 @@ export const onTabLoadIME = async () => {
     },
   }
 
+  const applySchemaActive = (schemaActive: SchemaActive) => {
+    if (schemaActive === "on") setState.activate()
+    else if (schemaActive === "off") setState.diactivate()
+    else setSchema(schemaActive)
+  }
+
   const lastNInputText = (n: number) => {
     return state.inputHistory
       .slice(state.inputHistory.length - n)
@@ -678,14 +719,61 @@ export const onTabLoadIME = async () => {
     const target = state.target
     if (!target) return
 
+    const match = text.matchAll(schemaActiveRegex)
+    const matches = match ? Array.from(match) : []
+    console.log("schemaActiveRegex matches", matches)
+    let schemaMatch1: RegExpExecArray | undefined
+    let schemaMatch2: RegExpExecArray | undefined
+
+    for (const m of matches) {
+      if (!isSchemaActive(m[1])) continue
+      if (schemaMatch2) {
+        schemaMatch1 = schemaMatch2
+        schemaMatch2 = m
+      } else if (schemaMatch1) {
+        schemaMatch2 = m
+      } else {
+        schemaMatch1 = m
+      }
+    }
+
+    console.log({
+      schemaMatch1,
+      schemaMatch2,
+    })
+
+    const surroundingText =
+      schemaMatch1 && schemaMatch2
+        ? text.slice(
+            schemaMatch1.index + schemaMatch1[0].length,
+            schemaMatch2.index,
+          )
+        : undefined
+    console.log("surroundingText", surroundingText)
+
+    let baseMatch: RegExpExecArray | undefined
+    if (surroundingText && schemaMatch1 && schemaMatch2) {
+      temporalSchema.byCursorSurroundingText(
+        surroundingText,
+        true,
+        schemaMatch2[1] as SchemaActive,
+      )
+      baseMatch = schemaMatch1
+    } else if (schemaMatch1 && schemaMatch2) baseMatch = schemaMatch2
+    else if (schemaMatch1) baseMatch = schemaMatch1
+
+    if (baseMatch) applySchemaActive(baseMatch[1] as SchemaActive)
+
     // --- 1. $| の位置特定と除去 ---
     const cursorMarker = "$|"
-    const cursorIndex = text.indexOf(cursorMarker)
+    const cursorMarkerIndex = text.indexOf(cursorMarker)
 
-    let insertText = text
-    if (cursorIndex !== -1) {
+    let insertText = text.replaceAll(schemaActiveRegex, "")
+    if (cursorMarkerIndex !== -1) {
       insertText = text.replace(cursorMarker, "")
     }
+
+    const cursorIndex = baseMatch?.index ?? cursorMarkerIndex
 
     // 1. 標準の input / textarea の場合 (演算子の優先順位バグを修正: start ?? (state.startPos + cursorIndex))
     if (isHTMLInputElement(target)) {
@@ -854,10 +942,9 @@ export const onTabLoadIME = async () => {
         [...filtered, ...searched.prefixMatch],
         needSuffix.length,
       )
-      console.log({ suffixes })
+      console.log("buffer:", state.buffer, "suffixes:", suffixes)
 
-      const suffixed = applySuffixes(needSuffix, suffixes)
-      console.log({ suffixed })
+      const suffixed = applySuffixes(needSuffix, suffixes.reverse())
       candidates = [
         ...exactMatch.slice(0, 1),
         ...filtered,
@@ -897,7 +984,10 @@ export const onTabLoadIME = async () => {
     renderWidget()
   }
 
-  const applySuffixes = (candidates: Cand[], suffixes: string[]): Cand[] =>
+  const applySuffixes = (
+    candidates: Cand[],
+    suffixesReversed: string[],
+  ): Cand[] =>
     candidates.map((cand, i) => {
       const suffix =
         cand.v.type === "zhword"
@@ -912,9 +1002,9 @@ export const onTabLoadIME = async () => {
                     .getHans(cand.text)
                     .map(h => h.cqkmForm?.slice(3))
                     .join("")
-                : suffixes.pop()
-            : suffixes.pop()
-          : suffixes.pop()
+                : suffixesReversed.pop()
+            : suffixesReversed.pop()
+          : suffixesReversed.pop()
 
       return {
         ...cand,
