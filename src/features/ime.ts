@@ -927,6 +927,26 @@ export class Cache {
     }
   }
 
+  updateCacheWord(newWord: ZhWord) {
+    const prefix = newWord.code.slice(0, PREFIX_MAX_LEN)
+
+    // 2. オンメモリ Cache も上書き更新
+    if (this.loadedWordChunks.has(prefix)) {
+      const chunk = this.loadedWordChunks.get(prefix)!
+      const index = chunk.findIndex(
+        w => w.code === newWord.code && w.zh === newWord.zh,
+      )
+
+      if (index !== -1) {
+        // 既存の要素を上書き
+        chunk[index] = newWord
+      } else {
+        // 存在しない場合のみ追加
+        chunk.push(newWord)
+      }
+    }
+  }
+
   async updateHanzi(hanzi: Hanzi) {
     await this.upsertItem(
       this.hans,
@@ -1000,11 +1020,12 @@ export class Cache {
       else prefixMatchedWords.push(w)
     }
 
-    prefixMatchedWords.sort((a, b) =>
+    prefixMatchedCodes.sort((a, b) =>
       a.code.length === b.code.length
         ? compareItems(a, b)
         : a.code.length - b.code.length,
     )
+
     prefixMatchedWords.sort((a, b) =>
       a.code.length === b.code.length
         ? compareItems(a, b)
@@ -1151,7 +1172,7 @@ export const getGlobalImeState = (): ImeState => {
       startPos: 0,
       target: null,
       schemaHistory: [],
-      selectedIndexMax: 20,
+      selectedIndexMax: 27,
     }
   }
   return _globalImeState
@@ -1181,7 +1202,7 @@ export class InlineSuggestPopup {
       boxShadow: "none",
       padding: "4px",
       display: "none",
-      // maxWidth: "520px", // 💡 横方向に敷き詰めるための適切な最大幅
+      maxWidth: "520px",
       overflowY: "auto",
       fontFamily: "monospace",
       fontSize: "13px",
@@ -1212,8 +1233,8 @@ export class InlineSuggestPopup {
       width: document.documentElement.clientWidth,
       height: document.documentElement.clientHeight,
     }
-    const maxWidth = client.width - coords.left - 16
-    const maxHeight = client.height - coords.top - 16
+    // const maxWidth = client.width - coords.left - 16
+    // const maxHeight = client.height - coords.top - 16
 
     // 入力欄の1行分の高さ（取得できない場合はデフォルト20px）
     const lineHeight = coords.lineHeight ?? 20
@@ -1224,28 +1245,22 @@ export class InlineSuggestPopup {
     // 💡 下の領域が狭く(180px未満)、かつ上の方が広い場合は「上表示モード」に切替
     const showAbove = spaceBelow < 180 && spaceAbove > spaceBelow
 
-    Object.assign(
-      this.el.style,
-      maxWidth < 200
-        ? {
-            right: "16px",
-            maxWidth: "200px",
-          }
-        : {
-            left: `${coords.left}px`,
-            maxWidth: `${maxWidth}px`,
-          },
-    )
+    // Object.assign(
+    //   this.el.style,
+    //   maxWidth < 200
+    //     ? {
+    //         right: "16px",
+    //         maxWidth: "200px",
+    //       }
+    //     : {
+    //         left: `${coords.left}px`,
+    //         maxWidth: `${maxWidth}px`,
+    //       },
+    // )
 
-    // // 💡 Flex-wrap で横向きレンガ状に敷き詰める設定
-    // Object.assign(this.el.style, {
-    //   top: `${coords.top}px`,
-    //   display: "flex",
-    //   flexWrap: "wrap",
-    //   gap: "6px",
-    //   maxHeight: `${maxHeight}px`,
-    //   alignItems: "flex-end",
-    // })
+    Object.assign(this.el.style, {
+      left: `${coords.left}px`,
+    })
 
     if (showAbove) {
       // ----------------------------------------------------
@@ -1304,7 +1319,7 @@ export class InlineSuggestPopup {
 
         return candidateTip(cand, isSelected, state.buffer, {
           fontSize: {
-            text: "21px",
+            text: "23px",
             above: "18px",
             below: "12px",
           },
@@ -1340,7 +1355,7 @@ export class InlineSuggestPopup {
   }
 }
 
-export const inlinePopup = new InlineSuggestPopup()
+// export const inlinePopup = new InlineSuggestPopup()
 
 // export const launchIME = async () => {
 //   console.log("AutoControl.launchIME")

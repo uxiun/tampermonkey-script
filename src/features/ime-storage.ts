@@ -69,6 +69,7 @@ export const storage = {
   setHans: (data: Hanzi[]) => saveStorage(STORAGE_KEYS.HANS, data),
 
   // setCodes: (data: ZhCode[]) => saveStorage(STORAGE_KEYS.CODES, data),
+
   setCodes: async (data: ZhCode[]) => {
     const raws = compact(data)
     GM_setValue(STORAGE_KEYS.CODES, raws)
@@ -171,6 +172,40 @@ export const storage = {
     if (!prefixes.includes(key)) {
       prefixes.push(key)
       GM_setValue("word_prefixes", prefixes)
+    }
+  },
+
+  // storage に追加
+  async updateWords(updatedWords: ZhWord[]): Promise<void> {
+    if (updatedWords.length === 0) return
+
+    // チャンク（prefix）ごとにグループ化
+    const chunks = new Map<string, ZhWord[]>()
+    for (const word of updatedWords) {
+      const prefix = word.code.slice(0, PREFIX_MAX_LEN)
+      const list = chunks.get(prefix) ?? []
+      list.push(word)
+      chunks.set(prefix, list)
+    }
+
+    // チャンク単位で 1回だけ GM_getValue / GM_setValue を実行
+    for (const [prefix, words] of chunks) {
+      const key = `words_prefix_${prefix}`
+      const raws = await GM_getValue(key, [])
+      const currentChunk = raws.map(r => restoreWord(r))
+
+      for (const updatedWord of words) {
+        const index = currentChunk.findIndex(
+          w => w.code === updatedWord.code && w.zh === updatedWord.zh,
+        )
+        if (index !== -1) {
+          currentChunk[index] = updatedWord
+        } else {
+          currentChunk.push(updatedWord)
+        }
+      }
+
+      await GM_setValue(key, compact(currentChunk))
     }
   },
 }

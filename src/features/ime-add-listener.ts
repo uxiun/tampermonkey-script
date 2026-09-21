@@ -27,8 +27,9 @@ import {
   schemaName,
   zaoci,
   ZhCode,
+  ZhWord,
 } from "@/features/ime"
-import { exportWordsBackup } from "./ime-storage"
+import { exportWordsBackup, storage } from "./ime-storage"
 import { isHTMLInputElement, noModifiers, triggered } from "./ime-trigger"
 
 type InputElement = HTMLInputElement | HTMLTextAreaElement
@@ -269,15 +270,17 @@ export const onTabLoadIME = async () => {
       const target = e.target as InputElement
 
       if (!state.active) {
-        if (
-          (isInput() && e.ctrlKey && e.key === "j") ||
-          triggered(e, "doubleSpace", "spaceOnLineStart")
-        ) {
+        if (isInput() && e.ctrlKey && e.key === "j") {
           e.preventDefault()
           e.stopImmediatePropagation()
           setState.activate()
-          return
+        } else if (triggered(e, "doubleSpace", "spaceOnLineStart")) {
+          e.preventDefault()
+          e.stopImmediatePropagation()
+          state.schema = lastZhSchema() ?? "cqkm"
+          setState.activate()
         }
+        return
       }
 
       if (!state.active || !isInput()) return
@@ -313,12 +316,18 @@ export const onTabLoadIME = async () => {
       }
 
       if (state.schema === "hiragana") {
-        if ((noModifiers(e) && e.key === " ") || (e.ctrlKey && e.key === "h")) {
+        if (triggered(e, "doubleSpace", "spaceOnLineStart")) {
+          e.preventDefault()
+          e.stopImmediatePropagation()
+          setState.diactivate()
+        } else if (
+          (e.key === " " && noModifiers(e)) ||
+          (e.ctrlKey && e.key === "h")
+        ) {
           e.preventDefault()
           e.stopImmediatePropagation()
           const schema = lastZhSchema() ?? "cqkm"
           setSchema(schema)
-
           return
         }
       }
@@ -496,9 +505,7 @@ export const onTabLoadIME = async () => {
         } else {
           e.preventDefault()
           e.stopImmediatePropagation()
-          if (triggered(e, "doubleSpace", "spaceOnLineStart"))
-            setState.diactivate()
-          else setSchema("hiragana")
+          setSchema("hiragana")
         }
         return
       }
@@ -534,7 +541,11 @@ export const onTabLoadIME = async () => {
           if (e.key === "ArrowUp") {
             const i = state.selectedIndex - 1
             state.selectedIndex =
-              i % Math.min(state.selectedIndexMax, state.candidates.length)
+              i < 0
+                ? i + Math.min(state.selectedIndexMax, state.candidates.length)
+                : i
+
+            // i % Math.min(state.selectedIndexMax, state.candidates.length)
           }
           renderWidget()
         }
@@ -542,11 +553,12 @@ export const onTabLoadIME = async () => {
       }
 
       if (e.key === "Tab") {
-        if (state.buffer.length > 0) {
+        if (state.candidates.length > 0) {
           e.preventDefault()
           e.stopImmediatePropagation()
+          state.selectedIndex++
           // setState.resetBuffer()
-          commit()
+          commit(false)
           setState.diactivate()
         }
         return
@@ -619,23 +631,25 @@ export const onTabLoadIME = async () => {
       state.startPos,
       "__ac_ime__mirror",
     )
+    console.log("renderWidget; coords", coords)
     inlinePopup.show(coords, state.selectedIndex)
   }
 
-  function commit() {
+  async function commit(updateNth = true) {
     if (!state.active || !state.target) return
     const cand = state.candidates[state.selectedIndex]
-    const coords = getPopupPosition(
-      state.target,
-      state.startPos,
-      "__ac_ime__mirror",
-    )
+
+    // const coords = getPopupPosition(
+    //   state.target,
+    //   state.startPos,
+    //   "__ac_ime__mirror",
+    // )
 
     setText(cand.text)
 
     state.inputHistory = [...state.inputHistory, cand]
 
-    if (state.selectedIndex > 0) {
+    if (updateNth && state.selectedIndex > 0) {
       // 同じ入力コード（code）を持つ候補だけを抽出
       const sameCodeCands = state.candidates.filter(c => c.code === cand.code)
 
@@ -656,14 +670,18 @@ export const onTabLoadIME = async () => {
       })
 
       // キャッシュ・ストレージの更新
+      const updatedWords: ZhWord[] = []
       for (const item of updatedItems) {
         if (item.v.type === "zhword") {
           // 型判定に応じて適切な更新関数を呼ぶ
-          state.cache.updateWord(item.v.v)
+          state.cache.updateCacheWord(item.v.v)
+          updatedWords.push(item.v.v)
         } else if (item.v.type === "zhcode") {
           state.cache.updateCode(item.v.v)
         }
       }
+
+      await storage.updateWords(updatedWords)
     }
 
     setState.resetBuffer()
@@ -945,6 +963,11 @@ export const onTabLoadIME = async () => {
       console.log("buffer:", state.buffer, "suffixes:", suffixes)
 
       const suffixed = applySuffixes(needSuffix, suffixes.reverse())
+
+      suffixed.forEach(l => {
+        console.log(l.text, l.code, l.suffix)
+      })
+
       candidates = [
         ...exactMatch.slice(0, 1),
         ...filtered,
@@ -954,7 +977,12 @@ export const onTabLoadIME = async () => {
       ]
     }
 
-    console.log("candidates", candidates)
+    candidates.slice(0, 10).forEach(cand => {
+      if (cand.v.type === "other") return
+      const v = cand.v.v
+      console.log(v.zh, v.code, "nth:", v.nth)
+    })
+
     state.selectedIndex = 0
 
     if (candidates.length === 0) {
@@ -988,7 +1016,7 @@ export const onTabLoadIME = async () => {
     candidates: Cand[],
     suffixesReversed: string[],
   ): Cand[] =>
-    candidates.map((cand, i) => {
+    candidates.map(cand => {
       const suffix =
         cand.v.type === "zhword"
           ? !cand.suffix

@@ -100,10 +100,10 @@ const pinyinDisplay = (cand: Cand, isSelected: boolean) => {
 
   const toneColors = [
     ["rgb(85, 81, 81)", "rgb(219, 219, 219)"],
-    ["rgb(240, 83, 36)", "rgb(239, 255, 92)"],
-    ["rgb(171, 42, 197)", "rgb(252, 168, 255)"],
-    ["rgb(22, 127, 197)", "rgb(114, 199, 255)"],
-    ["rgb(11, 119, 11)", "rgb(139, 255, 178)"],
+    ["rgb(211, 49, 0)", "rgb(239, 255, 92)"],
+    ["rgb(186, 20, 219)", "rgb(252, 168, 255)"],
+    ["rgb(0, 66, 128)", "rgb(114, 239, 255)"],
+    ["rgb(0, 121, 0)", "rgb(139, 255, 178)"],
   ]
 
   const pinyinSpan = (pinyin: string, isSelected: boolean) => {
@@ -123,7 +123,7 @@ const pinyinDisplay = (cand: Cand, isSelected: boolean) => {
 
     const color = isSelected ? selected : notselected
 
-    return `<span style="color: ${color};">${withoutTone}</span>`
+    return `<span style="color: ${color};">${pinyin}</span>`
   }
 
   return hans.map(h => pinyinSpan(h.pinyins[0], isSelected))
@@ -139,7 +139,9 @@ export const candidateTip = (
 ) => {
   const aboveTexts = cand.suffix
     ? (() => {
-        const code = `${cand.suffix.code.slice(cand.suffix.code.length - (cand.code.length + cand.suffix.code.length - (buffer?.length || 0)))}`
+        const n = buffer?.slice(cand.suffix.start)?.length ?? 0
+        const code = cand.suffix.code.slice(n)
+        // const code = `${cand.suffix.code.slice(cand.suffix.code.length - (cand.code.length + cand.suffix.code.length - (buffer?.length || 0)))}`
         return code ? [`(${code})`] : []
       })()
     : [removePrefix(buffer ?? "", cand.code)]
@@ -184,12 +186,12 @@ export const candidateTip = (
     aboveTexts.length === 0
       ? ""
       : `<div style="
+      margin: 2px 4px;
       ${mergedOption.fontSize?.above ? `font-size: ${mergedOption.fontSize.above};` : ""}
       ${mergedOption.fontFamily?.above ? `font-family: ${mergedOption.fontFamily.above};` : ""}
       color: ${isSelected ? "rgb(33, 95, 175)" : "#89b4fa"};
-      margin-bottom: 2px;
       white-space: nowrap;
-      ${isSelected ? "font-weight: bold;" : ""}">
+      ">
         ${aboveTexts.join("｜")}
       </div>`
 
@@ -202,21 +204,26 @@ export const candidateTip = (
     belowContent.length === 0
       ? ""
       : `<div style="
+      margin-top: 2px;
       ${mergedOption.fontSize?.below ? `font-size: ${mergedOption.fontSize.below};` : ""}
       ${mergedOption.fontFamily?.below ? `font-family: ${mergedOption.fontFamily.below};` : ""}
       color: ${isSelected ? "rgb(33, 95, 175)" : "#89b4fa"};
-      margin-bottom: 2px;
       white-space: nowrap;
-      ${isSelected ? "font-weight: bold;" : ""}">
+      ">
         ${belowContent.join("")}
       </div>`
 
   return `
-    <div style="flex: 0 1 auto; min-width: 0; overflow: hidden; padding: 5px 7px; background: ${bg}; border: ${border}; border-radius: 6px; box-shadow: ${boxShadow}; backdrop-filter: blur(4px); transition: all 0.08s ease; max-width: 100%;">
+    <div style="flex: 0 1 auto; min-width: 0; overflow: hidden;
+    padding: 2px 3px;
+    line-height: 1;
+    background: ${bg};
+    border: ${border};
+    border-radius: 6px;
+    box-shadow: ${boxShadow}; backdrop-filter: blur(4px); transition: all 0.08s ease; max-width: 100%;">
       ${aboveHtml}
       <div style="color: ${isSelected ? "rgb(19, 24, 41)" : "#cdd6f4"}; white-space: nowrap; text-overflow: ellipsis; overflow: hidden;">
         <span style="
-          margin-right: 5px;
           ${mergedOption.fontSize?.text ? `font-size: ${mergedOption.fontSize.text};` : ""}
           ${mergedOption.fontFamily?.text ? `font-family: ${mergedOption.fontFamily.text};` : ""}
         ">

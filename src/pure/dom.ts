@@ -38,6 +38,7 @@ export function getPopupPosition(
 ) {
   const VIEWPORT_MARGIN = 10 // 画面端との最低余白(px)
   const popupEstimatedHeight = 200 // 候補窓の概算高さ（必要に応じて変更）
+  const popupEstimatedWidth = 400 // 候補窓の概算高さ（必要に応じて変更）
 
   // ==========================================
   // A. contentEditable の場合 (Range API を直接使用)
@@ -65,7 +66,10 @@ export function getPopupPosition(
         }
 
         // 画面右からはみ出る場合の画面内補正
-        left = Math.min(left, window.innerWidth - 220) // 220はポップアップ幅＋余白
+        left = Math.min(
+          left,
+          window.innerWidth - popupEstimatedWidth - VIEWPORT_MARGIN,
+        ) // 220はポップアップ幅＋余白
         left = Math.max(VIEWPORT_MARGIN, left)
 
         return { top, left, lineHeight }
@@ -148,7 +152,10 @@ export function getPopupPosition(
   }
 
   // 画面左右の画面外ガード
-  left = Math.min(left, window.innerWidth - 220)
+  left = Math.min(
+    left,
+    window.innerWidth - popupEstimatedWidth - VIEWPORT_MARGIN,
+  )
   left = Math.max(VIEWPORT_MARGIN, left)
 
   return { top, left, lineHeight }
